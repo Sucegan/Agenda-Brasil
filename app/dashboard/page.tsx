@@ -66,16 +66,14 @@ export default function DashboardPage() {
       if (servicosData) setServicos(servicosData);
     } 
     else if (userData?.tipo === 'barbeiro') {
-      // Tenta buscar o barbeiro pelo usuario_id
       let { data: barbeiroData } = await supabase
         .from('barbeiros')
         .select('id')
         .eq('usuario_id', session.user.id)
         .single();
 
-      // Se por acaso não existir, cria automaticamente agora para evitar o erro!
       if (!barbeiroData) {
-        const { data: novoBarbeiro, error: createError } = await supabase
+        const { data: novoBarbeiro } = await supabase
           .from('barbeiros')
           .insert([
             {
@@ -87,7 +85,7 @@ export default function DashboardPage() {
           .select('id')
           .single();
 
-        if (!createError && novoBarbeiro) {
+        if (novoBarbeiro) {
           barbeiroData = novoBarbeiro;
         }
       }
@@ -159,13 +157,16 @@ export default function DashboardPage() {
       return;
     }
 
+    // Normaliza o horário para garantir formato HH:MM limpo
+    const horarioFormatado = horarioAgendamento.length === 5 ? horarioAgendamento : `${horarioAgendamento}:00`;
+
     const { error } = await supabase.from('agendamentos').insert([
       {
         cliente_id: clienteId,
         barbeiro_id: parseInt(selectedBarbeiro),
         servico_id: parseInt(selectedServico),
         data: dataAgendamento,
-        horario: horarioAgendamento,
+        horario: horarioFormatado,
         status: 'agendado',
       },
     ]);
@@ -215,11 +216,17 @@ export default function DashboardPage() {
         .trim()
     );
 
+    const duracaoNumerica = parseInt(novoServicoDuracao);
+    if (isNaN(duracaoNumerica) || duracaoNumerica <= 0 || duracaoNumerica > 480) {
+      alert('Insira uma duração válida em minutos (ex: 30, 45, 60).');
+      return;
+    }
+
     const { error } = await supabase.from('servicos').insert([
       {
         nome: novoServicoNome,
         preco: precoLimpo,
-        duracao: parseInt(novoServicoDuracao),
+        duracao: duracaoNumerica,
         barbeiro_id: barbeiroId,
       }
     ]);
@@ -366,7 +373,7 @@ export default function DashboardPage() {
                       <div>
                         <p className="font-semibold text-white">{item.servicos?.nome}</p>
                         <p className="text-xs text-zinc-400">Barbeiro: {item.barbeiros?.nome}</p>
-                        <p className="text-xs text-zinc-400">Data: {item.data.split('-').reverse().join('/')} às {item.horario}</p>
+                        <p className="text-xs text-zinc-400">Data: {item.data.split('-').reverse().join('/')} às {item.horario?.slice(0, 5)}</p>
                       </div>
                       <span className={`self-start sm:self-center rounded px-2.5 py-1 text-xs font-medium border uppercase tracking-wider ${
                         item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
@@ -397,7 +404,7 @@ export default function DashboardPage() {
                   {agendamentos.map((item) => (
                     <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 gap-4">
                       <div>
-                        <p className="font-semibold text-white text-lg">{item.horario}</p>
+                        <p className="font-semibold text-white text-lg">{item.horario?.slice(0, 5)}</p>
                         <p className="text-sm text-zinc-300"><span className="text-zinc-500">Cliente:</span> {item.clientes?.nome}</p>
                         <p className="text-sm text-zinc-300"><span className="text-zinc-500">Serviço:</span> {item.servicos?.nome} ({item.servicos?.duracao} min)</p>
                         <p className="text-xs text-emerald-500 mt-1">📱 {item.clientes?.telefone}</p>
@@ -445,7 +452,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Duração (min)</label>
-                  <input type="number" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} placeholder="Ex: 30" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                  <input type="number" min="1" max="480" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} placeholder="Ex: 30" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
                 </div>
                 <div className="md:col-span-4 flex justify-end">
                   <button type="submit" className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors">
