@@ -54,11 +54,32 @@ export default function DashboardPage() {
     setUsuario(userData);
 
     if (userData?.tipo === 'cliente') {
-      const { data: clienteData } = await supabase
+      // Tenta buscar o cliente pelo usuario_id
+      let { data: clienteData } = await supabase
         .from('clientes')
         .select('id')
         .eq('usuario_id', session.user.id)
         .single();
+
+      // Se não existir na tabela clientes, cria automaticamente para evitar erros
+      if (!clienteData) {
+        const { data: novoCliente } = await supabase
+          .from('clientes')
+          .insert([
+            {
+              nome: userData.nome,
+              telefone: userData.telefone || '(00) 00000-0000',
+              email: session.user.email,
+              usuario_id: session.user.id,
+            }
+          ])
+          .select('id')
+          .single();
+
+        if (novoCliente) {
+          clienteData = novoCliente;
+        }
+      }
 
       if (clienteData) {
         setClienteId(clienteData.id);
@@ -367,7 +388,6 @@ export default function DashboardPage() {
                   </select>
                 </div>
 
-                {/* Exibe os dias e horários de atendimento do barbeiro escolhido */}
                 {barbeiroSelecionadoInfo && (
                   <div className="md:col-span-2 rounded bg-zinc-800/40 p-3 border border-zinc-800 text-xs text-zinc-300 flex justify-between">
                     <span>📅 <b>Dias:</b> {barbeiroSelecionadoInfo.dias_trabalho || 'Segunda a Sábado'}</span>
@@ -427,7 +447,6 @@ export default function DashboardPage() {
 
         {usuario?.tipo === 'barbeiro' && (
           <>
-            {/* Bloco de Configurar Horários e Dias de Atendimento */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Meu Expediente</h2>
               <form onSubmit={handleSalvarExpediente} className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -451,7 +470,6 @@ export default function DashboardPage() {
               </form>
             </div>
 
-            {/* Bloco 1: Agenda */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
@@ -492,7 +510,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Bloco 2: Gerenciamento de Serviços */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Gerenciar Serviços</h2>
               
@@ -512,7 +529,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Duração (min)</label>
+                  <label className="mb-1 label text-xs font-medium text-zinc-300">Duração (min)</label>
                   <input type="number" min="1" max="480" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} placeholder="Ex: 30" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
                 </div>
                 <div className="md:col-span-4 flex justify-end">
@@ -526,7 +543,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-zinc-400">Nenhum serviço cadastrado.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {servicos.map(servico => (
+                  {servicos.map(servico => dataAgendamento && (
                     <div key={servico.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 p-3">
                       <div>
                         <p className="font-semibold text-white text-sm">{servico.nome}</p>
