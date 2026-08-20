@@ -20,7 +20,7 @@ export default function DashboardPage() {
 
   // Formulário de Serviços (Visão Barbeiro)
   const [novoServicoNome, setNovoServicoNome] = useState('');
-  const [novoServicoPreco, setNovoServicoPreco] = useState('');
+  const [novoServicoPrecoFormatado, setNovoServicoPrecoFormatado] = useState('');
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
 
   const [loading, setLoading] = useState(true);
@@ -76,7 +76,6 @@ export default function DashboardPage() {
         setBarbeiroId(barbeiroData.id);
         carregarAgendamentosBarbeiro(barbeiroData.id);
 
-        // Barbeiro carrega apenas os seus próprios serviços cadastrados
         const { data: servicosData } = await supabase
           .from('servicos')
           .select('*')
@@ -115,6 +114,21 @@ export default function DashboardPage() {
       .order('horario', { ascending: true });
 
     if (data) setAgendamentos(data);
+  };
+
+  // Máscara inteligente de Moeda (Ex: digita 3500 e vira R$ 35,00)
+  const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(/\D/g, ''); // Remove tudo que não for número
+    if (!valor) {
+      setNovoServicoPrecoFormatado('');
+      return;
+    }
+    const numero = Number(valor) / 100; // Divide por 100 para considerar os centavos
+    const formatado = numero.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    setNovoServicoPrecoFormatado(formatado);
   };
 
   const handleAgendar = async (e: React.FormEvent) => {
@@ -162,19 +176,31 @@ export default function DashboardPage() {
     }
   };
 
-  // Função para adicionar um novo serviço vinculado ao barbeiro logado
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!novoServicoNome || !novoServicoPreco || !novoServicoDuracao || !barbeiroId) {
+    if (!barbeiroId) {
+      alert('Erro: ID do barbeiro não encontrado. Tente sair e entrar novamente.');
+      return;
+    }
+    if (!novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
       alert('Preencha todos os campos para cadastrar o serviço.');
       return;
     }
 
+    // Transforma o texto formatado (ex: "R$ 35,00") em um número real para o banco (ex: 35.00)
+    const precoLimpo = parseFloat(
+      novoServicoPrecoFormatado
+        .replace('R$', '')
+        .replace(/\./g, '')
+        .replace(',', '.')
+        .trim()
+    );
+
     const { error } = await supabase.from('servicos').insert([
       {
         nome: novoServicoNome,
-        preco: parseFloat(novoServicoPreco),
+        preco: precoLimpo,
         duracao: parseInt(novoServicoDuracao),
         barbeiro_id: barbeiroId,
       }
@@ -184,9 +210,30 @@ export default function DashboardPage() {
       alert(`Erro ao adicionar serviço: ${error.message}`);
     } else {
       setNovoServicoNome('');
-      setNovoServicoPreco('');
+      setNovoServicoPrecoFormatado('');
       setNovoServicoDuracao('');
       
+      const { data } = await supabase
+        .from('servicos')
+        .select('*')
+        .eq('barbeiro_id', barbeiroId)
+        .order('nome');
+      if (data) setServicos(data);
+    }
+  };
+
+  // Função para deletar um serviço
+  const handleExcluirServico = async (servicoId: number) => {
+    if (!confirm('Deseja realmente excluir este serviço?')) return;
+
+    const { error } = await supabase
+      .from('servicos')
+      .delete()
+      .eq('id', servicoId);
+
+    if (error) {
+      alert(`Erro ao excluir: ${error.message}`);
+    } else {
       const { data } = await supabase
         .from('servicos')
         .select('*')
@@ -209,7 +256,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Filtra os serviços para o cliente ver apenas os do barbeiro escolhido
   const servicosDoBarbeiroSelecionado = servicos.filter(
     (s) => s.barbeiro_id === Number(selectedBarbeiro)
   );
@@ -233,9 +279,6 @@ export default function DashboardPage() {
 
       <section className="mx-auto mt-8 max-w-4xl space-y-6">
         
-        {/* ========================================== */}
-        {/* VISÃO DO CLIENTE */}
-        {/* ========================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
@@ -323,12 +366,8 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ========================================== */}
-        {/* VISÃO DO BARBEIRO */}
-        {/* ========================================== */}
         {usuario?.tipo === 'barbeiro' && (
           <>
-            {/* Bloco 1: Agenda */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
@@ -369,7 +408,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Bloco 2: Gerenciamento de Serviços */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Gerenciar Serviços</h2>
               
@@ -379,8 +417,14 @@ export default function DashboardPage() {
                   <input type="text" value={novoServicoNome} onChange={e => setNovoServicoNome(e.target.value)} placeholder="Ex: Corte Degradê" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Preço (R$)</label>
-                  <input type="number" step="0.01" value={novoServicoPreco} onChange={e => setNovoServicoPreco(e.target.value)} placeholder="Ex: 35.00" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Preço</label>
+                  <input 
+                    type="text" 
+                    value={novoServicoPrecoFormatado} 
+                    onChange={handlePrecoChange} 
+                    placeholder="R$ 0,00" 
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" 
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Duração (min)</label>
@@ -402,10 +446,16 @@ export default function DashboardPage() {
                       <div>
                         <p className="font-semibold text-white text-sm">{servico.nome}</p>
                         <p className="text-xs text-zinc-400">Duração: {servico.duracao} min</p>
+                        <p className="font-medium text-emerald-400 mt-1">
+                          R$ {Number(servico.preco).toFixed(2)}
+                        </p>
                       </div>
-                      <p className="font-medium text-emerald-400">
-                        R$ {Number(servico.preco).toFixed(2)}
-                      </p>
+                      <button
+                        onClick={() => handleExcluirServico(servico.id)}
+                        className="rounded bg-red-950/60 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/60 border border-red-900/50 transition-colors self-center"
+                      >
+                        Excluir
+                      </button>
                     </div>
                   ))}
                 </div>
