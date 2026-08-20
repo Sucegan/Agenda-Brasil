@@ -9,13 +9,13 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nome, setNome] = useState('');
+  const [telefone, setTelefone] = useState('');
   const [tipo, setTipo] = useState<'cliente' | 'barbeiro'>('cliente');
   const [mensagem, setMensagem] = useState('');
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
 
-  
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -32,13 +32,10 @@ export default function Home() {
     setMensagem('');
 
     if (isSignUp) {
-      // Cria a conta no Supabase Auth
+      // 1. Criar usuário no Supabase Auth
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: { nome, tipo },
-        },
       });
 
       if (signUpError) {
@@ -47,26 +44,49 @@ export default function Home() {
         return;
       }
 
-
       if (data.user) {
-        const { error: dbError } = await supabase.from('usuarios').insert([
+        const userId = data.user.id;
+
+        // 2. Inserir na tabela 'usuarios'
+        const { error: userError } = await supabase.from('usuarios').insert([
           {
-            id: data.user.id,
+            id: userId,
             nome,
-            email,
+            telefone,
             tipo,
           },
         ]);
 
-        if (dbError) {
-          console.error('Erro ao registrar perfil no banco:', dbError.message);
+        if (userError) {
+          setMensagem(`Erro ao registrar usuário: ${userError.message}`);
+          setLoading(false);
+          return;
+        }
+
+        // 3. Inserir na tabela filha correspondente (clientes ou barbeiros)
+        if (tipo === 'cliente') {
+          await supabase.from('clientes').insert([
+            {
+              nome,
+              telefone,
+              email,
+              usuario_id: userId,
+            },
+          ]);
+        } else if (tipo === 'barbeiro') {
+          await supabase.from('barbeiros').insert([
+            {
+              nome,
+              telefone,
+              usuario_id: userId,
+            },
+          ]);
         }
       }
 
-      setMensagem('Cadastro realizado com sucesso! Você já pode fazer login.');
+      setMensagem('Cadastro realizado com sucesso! Faça login para continuar.');
       setIsSignUp(false);
     } else {
-      // Efetua login
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -102,6 +122,18 @@ export default function Home() {
                   onChange={(e) => setNome(e.target.value)}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
                   placeholder="Seu nome"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-300">Telefone</label>
+                <input
+                  type="text"
+                  required
+                  value={telefone}
+                  onChange={(e) => setTelefone(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
+                  placeholder="(00) 00000-0000"
                 />
               </div>
 
