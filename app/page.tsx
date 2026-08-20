@@ -26,6 +26,23 @@ export default function Home() {
     checkSession();
   }, [router]);
 
+  // Função para traduzir erros comuns do Supabase
+  const traduzirErro = (mensagemIngles: string) => {
+    if (mensagemIngles.includes('email rate limit exceeded')) {
+      return 'Limite de envios atingido. Aguarde alguns minutos ou desative a confirmação de e-mail no Supabase.';
+    }
+    if (mensagemIngles.includes('Invalid login credentials')) {
+      return 'E-mail ou senha incorretos.';
+    }
+    if (mensagemIngles.includes('User already registered')) {
+      return 'Este e-mail já está cadastrado em nosso sistema.';
+    }
+    if (mensagemIngles.includes('Password should be at least')) {
+      return 'A senha deve ter pelo menos 6 caracteres.';
+    }
+    return `Ocorreu um erro: ${mensagemIngles}`;
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -39,7 +56,7 @@ export default function Home() {
       });
 
       if (signUpError) {
-        setMensagem(`Erro no cadastro: ${signUpError.message}`);
+        setMensagem(traduzirErro(signUpError.message));
         setLoading(false);
         return;
       }
@@ -58,12 +75,12 @@ export default function Home() {
         ]);
 
         if (userError) {
-          setMensagem(`Erro ao registrar usuário: ${userError.message}`);
+          setMensagem(`Erro ao registrar dados: ${userError.message}`);
           setLoading(false);
           return;
         }
 
-        // 3. Inserir na tabela filha correspondente (clientes ou barbeiros)
+        // 3. Inserir na tabela de cliente ou barbeiro
         if (tipo === 'cliente') {
           await supabase.from('clientes').insert([
             {
@@ -84,7 +101,7 @@ export default function Home() {
         }
       }
 
-      setMensagem('Cadastro realizado com sucesso! Faça login para continuar.');
+      setMensagem('Cadastro realizado com sucesso! Você já pode fazer login.');
       setIsSignUp(false);
     } else {
       const { error } = await supabase.auth.signInWithPassword({
@@ -93,7 +110,7 @@ export default function Home() {
       });
 
       if (error) {
-        setMensagem(`Erro no login: ${error.message}`);
+        setMensagem(traduzirErro(error.message));
       } else {
         router.push('/dashboard');
       }
@@ -121,7 +138,7 @@ export default function Home() {
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="Seu nome"
+                  placeholder="Digite seu nome completo"
                 />
               </div>
 
@@ -144,7 +161,7 @@ export default function Home() {
                   onChange={(e) => setTipo(e.target.value as 'cliente' | 'barbeiro')}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
                 >
-                  <option value="cliente">Cliente (Quero agendar)</option>
+                  <option value="cliente">Cliente (Quero agendar horários)</option>
                   <option value="barbeiro">Barbeiro / Barbearia</option>
                 </select>
               </div>
@@ -159,7 +176,7 @@ export default function Home() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-              placeholder="seu@email.com"
+              placeholder="seuemail@exemplo.com"
             />
           </div>
 
