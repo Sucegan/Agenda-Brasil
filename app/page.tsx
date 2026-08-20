@@ -26,7 +26,26 @@ export default function Home() {
     checkSession();
   }, [router]);
 
-  // Tratamento de mensagens de erro totalmente em português
+  // Função para formatar o telefone automaticamente enquanto digita
+  const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(/\D/g, ''); // Remove tudo que não for número
+
+    if (valor.length > 11) valor = valor.slice(0, 11); // Limita a 11 dígitos
+
+    // Aplica a máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+    if (valor.length > 10) {
+      valor = valor.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
+    } else if (valor.length > 6) {
+      valor = valor.replace(/^(\d{2})(\d{4})(\d{0,4})$/, '($1) $2-$3');
+    } else if (valor.length > 2) {
+      valor = valor.replace(/^(\d{2})(\d{0,5})$/, '($1) $2');
+    } else if (valor.length > 0) {
+      valor = valor.replace(/^(\d*)/, '($1');
+    }
+
+    setTelefone(valor);
+  };
+
   const traduzirErro = (mensagemIngles: string) => {
     const msg = mensagemIngles.toLowerCase();
 
@@ -50,8 +69,16 @@ export default function Home() {
     setLoading(true);
     setMensagem('');
 
+    // Validação simples de tamanho de telefone
+    const numerosApenas = telefone.replace(/\D/g, '');
+    if (isSignUp && (numerosApenas.length < 10 || numerosApenas.length > 11)) {
+      setMensagem('Por favor, insira um número de telefone com DDD válido.');
+      setLoading(false);
+      return;
+    }
+
     if (isSignUp) {
-      // 1. Criar usuário no Supabase Auth
+      // 1. Criar usuário no Auth
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -82,7 +109,7 @@ export default function Home() {
           return;
         }
 
-        // 3. Inserir na tabela de cliente ou barbeiro
+        // 3. Inserir na tabela específica com o telefone cadastrado
         if (tipo === 'cliente') {
           await supabase.from('clientes').insert([
             {
@@ -145,15 +172,20 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Telefone</label>
+                <label className="mb-1 block text-sm font-medium text-zinc-300">
+                  Telefone / WhatsApp
+                </label>
                 <input
-                  type="text"
+                  type="tel"
                   required
                   value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
+                  onChange={handleTelefoneChange}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="(00) 00000-0000"
+                  placeholder="(11) 99999-9999"
                 />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  Usado para receber lembretes e avisos do agendamento.
+                </span>
               </div>
 
               <div>
