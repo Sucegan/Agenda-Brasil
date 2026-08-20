@@ -75,11 +75,15 @@ export default function DashboardPage() {
       if (barbeiroData) {
         setBarbeiroId(barbeiroData.id);
         carregarAgendamentosBarbeiro(barbeiroData.id);
-      }
 
-      // Carregar os serviços para o barbeiro ver e gerenciar
-      const { data: servicosData } = await supabase.from('servicos').select('*').order('nome');
-      if (servicosData) setServicos(servicosData);
+        // Barbeiro carrega apenas os seus próprios serviços cadastrados
+        const { data: servicosData } = await supabase
+          .from('servicos')
+          .select('*')
+          .eq('barbeiro_id', barbeiroData.id)
+          .order('nome');
+        if (servicosData) setServicos(servicosData);
+      }
     }
 
     setLoading(false);
@@ -158,11 +162,11 @@ export default function DashboardPage() {
     }
   };
 
-  // Função para adicionar um novo serviço ao banco
+  // Função para adicionar um novo serviço vinculado ao barbeiro logado
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!novoServicoNome || !novoServicoPreco || !novoServicoDuracao) {
+    if (!novoServicoNome || !novoServicoPreco || !novoServicoDuracao || !barbeiroId) {
       alert('Preencha todos os campos para cadastrar o serviço.');
       return;
     }
@@ -172,17 +176,22 @@ export default function DashboardPage() {
         nome: novoServicoNome,
         preco: parseFloat(novoServicoPreco),
         duracao: parseInt(novoServicoDuracao),
+        barbeiro_id: barbeiroId,
       }
     ]);
 
     if (error) {
       alert(`Erro ao adicionar serviço: ${error.message}`);
     } else {
-      // Limpar formulário e recarregar lista
       setNovoServicoNome('');
       setNovoServicoPreco('');
       setNovoServicoDuracao('');
-      const { data } = await supabase.from('servicos').select('*').order('nome');
+      
+      const { data } = await supabase
+        .from('servicos')
+        .select('*')
+        .eq('barbeiro_id', barbeiroId)
+        .order('nome');
       if (data) setServicos(data);
     }
   };
@@ -199,6 +208,11 @@ export default function DashboardPage() {
       </main>
     );
   }
+
+  // Filtra os serviços para o cliente ver apenas os do barbeiro escolhido
+  const servicosDoBarbeiroSelecionado = servicos.filter(
+    (s) => s.barbeiro_id === Number(selectedBarbeiro)
+  );
 
   return (
     <main className="min-h-screen bg-zinc-950 p-6 text-white">
@@ -224,13 +238,19 @@ export default function DashboardPage() {
         {/* ========================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
-            {/* Mantido idêntico ao anterior para o cliente... */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Novo Agendamento</h2>
               <form onSubmit={handleAgendar} className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Barbeiro</label>
-                  <select value={selectedBarbeiro} onChange={(e) => setSelectedBarbeiro(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none">
+                  <select 
+                    value={selectedBarbeiro} 
+                    onChange={(e) => {
+                      setSelectedBarbeiro(e.target.value);
+                      setSelectedServico('');
+                    }} 
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
+                  >
                     <option value="">Selecione um barbeiro</option>
                     {barbeiros.map((b) => (<option key={b.id} value={b.id}>{b.nome}</option>))}
                   </select>
@@ -238,9 +258,16 @@ export default function DashboardPage() {
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Serviço</label>
-                  <select value={selectedServico} onChange={(e) => setSelectedServico(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none">
-                    <option value="">Selecione um serviço</option>
-                    {servicos.map((s) => (
+                  <select 
+                    value={selectedServico} 
+                    onChange={(e) => setSelectedServico(e.target.value)}
+                    disabled={!selectedBarbeiro}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="">
+                      {!selectedBarbeiro ? 'Escolha um barbeiro primeiro' : 'Selecione um serviço'}
+                    </option>
+                    {servicosDoBarbeiroSelecionado.map((s) => (
                       <option key={s.id} value={s.id}>{s.nome} - R$ {Number(s.preco).toFixed(2)} ({s.duracao} min)</option>
                     ))}
                   </select>

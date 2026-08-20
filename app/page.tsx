@@ -17,22 +17,71 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        router.push('/dashboard');
+    // Função inteligente que verifica se o usuário já tem perfil no banco 
+    // quando ele logar (seja pelo botão ou clicando no link do e-mail)
+    const verificarECriarPerfil = async (session: any) => {
+      const userId = session.user.id;
+      
+      // 1. Checa se o usuário já existe na tabela 'usuarios'
+      const { data: usuarioExistente } = await supabase
+        .from('usuarios')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+      // 2. Se não existir, é o primeiro login dele após confirmar o e-mail!
+      if (!usuarioExistente) {
+        // Pegamos os dados que guardamos nos "metadados" na hora do cadastro
+        const { nome, telefone, tipo } = session.user.user_metadata;
+
+        if (nome && tipo) {
+          // Salva na tabela principal
+          await supabase.from('usuarios').insert([
+            { id: userId, nome, telefone, tipo }
+          ]);
+
+          // Salva na tabela específica
+          if (tipo === 'cliente') {
+            await supabase.from('clientes').insert([
+              { nome, telefone, email: session.user.email, usuario_id: userId }
+            ]);
+          } else if (tipo === 'barbeiro') {
+            await supabase.from('barbeiros').insert([
+              { nome, telefone, usuario_id: userId }
+            ]);
+          }
+        }
       }
+
+      // Tudo certo? Vai pro painel!
+      router.push('/dashboard');
     };
-    checkSession();
+
+    // Fica "escutando" se o usuário logou com sucesso
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        verificarECriarPerfil(session);
+      }
+    });
+
+    // Também checa assim que a página carrega (caso já esteja logado)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        verificarECriarPerfil(session);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   // Função para formatar o telefone automaticamente enquanto digita
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, ''); // Remove tudo que não for número
+    let valor = e.target.value.replace(/\D/g, ''); 
 
-    if (valor.length > 11) valor = valor.slice(0, 11); // Limita a 11 dígitos
+    if (valor.length > 11) valor = valor.slice(0, 11); 
 
-    // Aplica a máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
     if (valor.length > 10) {
       valor = valor.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
     } else if (valor.length > 6) {
@@ -69,7 +118,6 @@ export default function Home() {
     setLoading(true);
     setMensagem('');
 
-    // Validação simples de tamanho de telefone
     const numerosApenas = telefone.replace(/\D/g, '');
     if (isSignUp && (numerosApenas.length < 10 || numerosApenas.length > 11)) {
       setMensagem('Por favor, insira um número de telefone com DDD válido.');
@@ -78,10 +126,17 @@ export default function Home() {
     }
 
     if (isSignUp) {
-      // 1. Criar usuário no Auth
+      // 1. Criar usuário e guardar os dados em "options.data"
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            nome,
+            telefone,
+            tipo
+          }
+        }
       });
 
       if (signUpError) {
@@ -90,49 +145,19 @@ export default function Home() {
         return;
       }
 
-      if (data.user) {
-        const userId = data.user.id;
+      // Mensagem de sucesso
+      setMensagem('✅ Conta criada! Verifique sua caixa de entrada (e o Spam) e clique no link para ativar seu acesso.');
+      
+      // Reseta os campos para o usuário focar apenas na mensagem
+      setEmail('');
+      setPassword('');
+      setNome('');
+      setTelefone('');
+      setIsSignUp(false); 
+      setLoading(false);
 
-        // 2. Inserir na tabela 'usuarios'
-        const { error: userError } = await supabase.from('usuarios').insert([
-          {
-            id: userId,
-            nome,
-            telefone,
-            tipo,
-          },
-        ]);
-
-        if (userError) {
-          setMensagem('Não foi possível concluir o registro. Tente novamente.');
-          setLoading(false);
-          return;
-        }
-
-        // 3. Inserir na tabela específica com o telefone cadastrado
-        if (tipo === 'cliente') {
-          await supabase.from('clientes').insert([
-            {
-              nome,
-              telefone,
-              email,
-              usuario_id: userId,
-            },
-          ]);
-        } else if (tipo === 'barbeiro') {
-          await supabase.from('barbeiros').insert([
-            {
-              nome,
-              telefone,
-              usuario_id: userId,
-            },
-          ]);
-        }
-      }
-
-      setMensagem('Cadastro realizado com sucesso! Você já pode fazer login.');
-      setIsSignUp(false);
     } else {
+      // 2. Lógica de login
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -140,12 +165,10 @@ export default function Home() {
 
       if (error) {
         setMensagem(traduzirErro(error.message));
-      } else {
-        router.push('/dashboard');
+        setLoading(false);
       }
+      // O redirect para o dashboard não fica mais aqui! O useEffect lá em cima fará a mágica ao detectar o SIGNED_IN.
     }
-
-    setLoading(false);
   };
 
   return (
