@@ -15,7 +15,7 @@ export default function Home() {
 
   const router = useRouter();
 
-  // Verifica se o usuário já possui sessão ativa e redireciona para o dashboard
+  
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -47,7 +47,7 @@ export default function Home() {
         return;
       }
 
-      // Registra as informações adicionais na tabela 'usuarios'
+
       if (data.user) {
         const { error: dbError } = await supabase.from('usuarios').insert([
           {
