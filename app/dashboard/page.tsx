@@ -23,6 +23,11 @@ export default function DashboardPage() {
   const [novoServicoPrecoFormatado, setNovoServicoPrecoFormatado] = useState('');
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
 
+  // Configurações de Expediente do Barbeiro
+  const [horarioInicio, setHorarioInicio] = useState('08:00');
+  const [horarioFim, setHorarioFim] = useState('18:00');
+  const [diasTrabalho, setDiasTrabalho] = useState('Segunda a Sábado');
+
   const [loading, setLoading] = useState(true);
   const [mensagem, setMensagem] = useState('');
   const router = useRouter();
@@ -68,7 +73,7 @@ export default function DashboardPage() {
     else if (userData?.tipo === 'barbeiro') {
       let { data: barbeiroData } = await supabase
         .from('barbeiros')
-        .select('id')
+        .select('*')
         .eq('usuario_id', session.user.id)
         .single();
 
@@ -80,9 +85,12 @@ export default function DashboardPage() {
               nome: userData.nome,
               telefone: userData.telefone || '',
               usuario_id: session.user.id,
+              horario_inicio: '08:00',
+              horario_fim: '18:00',
+              dias_trabalho: 'Segunda a Sábado'
             }
           ])
-          .select('id')
+          .select('*')
           .single();
 
         if (novoBarbeiro) {
@@ -92,6 +100,10 @@ export default function DashboardPage() {
 
       if (barbeiroData) {
         setBarbeiroId(barbeiroData.id);
+        setHorarioInicio(barbeiroData.horario_inicio || '08:00');
+        setHorarioFim(barbeiroData.horario_fim || '18:00');
+        setDiasTrabalho(barbeiroData.dias_trabalho || 'Segunda a Sábado');
+
         carregarAgendamentosBarbeiro(barbeiroData.id);
 
         const { data: servicosData } = await supabase
@@ -148,6 +160,26 @@ export default function DashboardPage() {
     setNovoServicoPrecoFormatado(formatado);
   };
 
+  const handleSalvarExpediente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!barbeiroId) return;
+
+    const { error } = await supabase
+      .from('barbeiros')
+      .update({
+        horario_inicio: horarioInicio,
+        horario_fim: horarioFim,
+        dias_trabalho: diasTrabalho,
+      })
+      .eq('id', barbeiroId);
+
+    if (error) {
+      alert(`Erro ao salvar expediente: ${error.message}`);
+    } else {
+      alert('Horários e dias de atendimento atualizados com sucesso!');
+    }
+  };
+
   const handleAgendar = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensagem('');
@@ -157,7 +189,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Normaliza o horário para garantir formato HH:MM limpo
     const horarioFormatado = horarioAgendamento.length === 5 ? horarioAgendamento : `${horarioAgendamento}:00`;
 
     const { error } = await supabase.from('agendamentos').insert([
@@ -200,7 +231,7 @@ export default function DashboardPage() {
     e.preventDefault();
     
     if (!barbeiroId) {
-      alert('Erro: ID do barbeiro não encontrado. Tente atualizar a página.');
+      alert('Erro: ID do barbeiro não encontrado.');
       return;
     }
     if (!novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
@@ -216,17 +247,11 @@ export default function DashboardPage() {
         .trim()
     );
 
-    const duracaoNumerica = parseInt(novoServicoDuracao);
-    if (isNaN(duracaoNumerica) || duracaoNumerica <= 0 || duracaoNumerica > 480) {
-      alert('Insira uma duração válida em minutos (ex: 30, 45, 60).');
-      return;
-    }
-
     const { error } = await supabase.from('servicos').insert([
       {
         nome: novoServicoNome,
         preco: precoLimpo,
-        duracao: duracaoNumerica,
+        duracao: parseInt(novoServicoDuracao),
         barbeiro_id: barbeiroId,
       }
     ]);
@@ -284,6 +309,8 @@ export default function DashboardPage() {
     (s) => s.barbeiro_id === Number(selectedBarbeiro)
   );
 
+  const barbeiroSelecionadoInfo = barbeiros.find((b) => b.id === Number(selectedBarbeiro));
+
   return (
     <main className="min-h-screen bg-zinc-950 p-6 text-white">
       <header className="mx-auto flex max-w-4xl items-center justify-between border-b border-zinc-800 pb-4">
@@ -340,6 +367,14 @@ export default function DashboardPage() {
                   </select>
                 </div>
 
+                {/* Exibe os dias e horários de atendimento do barbeiro escolhido */}
+                {barbeiroSelecionadoInfo && (
+                  <div className="md:col-span-2 rounded bg-zinc-800/40 p-3 border border-zinc-800 text-xs text-zinc-300 flex justify-between">
+                    <span>📅 <b>Dias:</b> {barbeiroSelecionadoInfo.dias_trabalho || 'Segunda a Sábado'}</span>
+                    <span>⏰ <b>Horário:</b> {barbeiroSelecionadoInfo.horario_inicio} às {barbeiroSelecionadoInfo.horario_fim}</span>
+                  </div>
+                )}
+
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Data</label>
                   <input type="date" min={dataHoje} value={dataAgendamento} onChange={(e) => setDataAgendamento(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none" />
@@ -392,7 +427,32 @@ export default function DashboardPage() {
 
         {usuario?.tipo === 'barbeiro' && (
           <>
+            {/* Bloco de Configurar Horários e Dias de Atendimento */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
+              <h2 className="mb-4 text-xl font-semibold text-emerald-400">Meu Expediente</h2>
+              <form onSubmit={handleSalvarExpediente} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Início do Expediente</label>
+                  <input type="time" value={horarioInicio} onChange={e => setHorarioInicio(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Fim do Expediente</label>
+                  <input type="time" value={horarioFim} onChange={e => setHorarioFim(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Dias de Atendimento</label>
+                  <input type="text" value={diasTrabalho} onChange={e => setDiasTrabalho(e.target.value)} placeholder="Ex: Segunda a Sábado" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div className="md:col-span-3 flex justify-end">
+                  <button type="submit" className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-700 transition-colors">
+                    Salvar Expediente
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Bloco 1: Agenda */}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
               </div>
@@ -432,6 +492,7 @@ export default function DashboardPage() {
               )}
             </div>
 
+            {/* Bloco 2: Gerenciamento de Serviços */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Gerenciar Serviços</h2>
               
