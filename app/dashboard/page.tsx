@@ -18,6 +18,11 @@ export default function DashboardPage() {
   const [dataAgendamento, setDataAgendamento] = useState('');
   const [horarioAgendamento, setHorarioAgendamento] = useState('');
 
+  // Formulário de Serviços (Visão Barbeiro)
+  const [novoServicoNome, setNovoServicoNome] = useState('');
+  const [novoServicoPreco, setNovoServicoPreco] = useState('');
+  const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
+
   const [loading, setLoading] = useState(true);
   const [mensagem, setMensagem] = useState('');
   const router = useRouter();
@@ -56,7 +61,7 @@ export default function DashboardPage() {
       }
       
       const { data: barbeirosData } = await supabase.from('barbeiros').select('*');
-      const { data: servicosData } = await supabase.from('servicos').select('*');
+      const { data: servicosData } = await supabase.from('servicos').select('*').order('nome');
       if (barbeirosData) setBarbeiros(barbeirosData);
       if (servicosData) setServicos(servicosData);
     } 
@@ -71,6 +76,10 @@ export default function DashboardPage() {
         setBarbeiroId(barbeiroData.id);
         carregarAgendamentosBarbeiro(barbeiroData.id);
       }
+
+      // Carregar os serviços para o barbeiro ver e gerenciar
+      const { data: servicosData } = await supabase.from('servicos').select('*').order('nome');
+      if (servicosData) setServicos(servicosData);
     }
 
     setLoading(false);
@@ -136,7 +145,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Nova função para o Barbeiro mudar o status
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
     const { error } = await supabase
       .from('agendamentos')
@@ -147,6 +155,35 @@ export default function DashboardPage() {
       alert(`Erro ao atualizar status: ${error.message}`);
     } else {
       if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
+    }
+  };
+
+  // Função para adicionar um novo serviço ao banco
+  const handleAdicionarServico = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!novoServicoNome || !novoServicoPreco || !novoServicoDuracao) {
+      alert('Preencha todos os campos para cadastrar o serviço.');
+      return;
+    }
+
+    const { error } = await supabase.from('servicos').insert([
+      {
+        nome: novoServicoNome,
+        preco: parseFloat(novoServicoPreco),
+        duracao: parseInt(novoServicoDuracao),
+      }
+    ]);
+
+    if (error) {
+      alert(`Erro ao adicionar serviço: ${error.message}`);
+    } else {
+      // Limpar formulário e recarregar lista
+      setNovoServicoNome('');
+      setNovoServicoPreco('');
+      setNovoServicoDuracao('');
+      const { data } = await supabase.from('servicos').select('*').order('nome');
+      if (data) setServicos(data);
     }
   };
 
@@ -187,74 +224,47 @@ export default function DashboardPage() {
         {/* ========================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
+            {/* Mantido idêntico ao anterior para o cliente... */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Novo Agendamento</h2>
               <form onSubmit={handleAgendar} className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Barbeiro</label>
-                  <select
-                    value={selectedBarbeiro}
-                    onChange={(e) => setSelectedBarbeiro(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  >
+                  <select value={selectedBarbeiro} onChange={(e) => setSelectedBarbeiro(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none">
                     <option value="">Selecione um barbeiro</option>
-                    {barbeiros.map((b) => (
-                      <option key={b.id} value={b.id}>{b.nome}</option>
-                    ))}
+                    {barbeiros.map((b) => (<option key={b.id} value={b.id}>{b.nome}</option>))}
                   </select>
                 </div>
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Serviço</label>
-                  <select
-                    value={selectedServico}
-                    onChange={(e) => setSelectedServico(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  >
+                  <select value={selectedServico} onChange={(e) => setSelectedServico(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none">
                     <option value="">Selecione um serviço</option>
                     {servicos.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.nome} - R$ {Number(s.preco).toFixed(2)} ({s.duracao} min)
-                      </option>
+                      <option key={s.id} value={s.id}>{s.nome} - R$ {Number(s.preco).toFixed(2)} ({s.duracao} min)</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Data</label>
-                  <input
-                    type="date"
-                    min={dataHoje} 
-                    value={dataAgendamento}
-                    onChange={(e) => setDataAgendamento(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  />
+                  <input type="date" min={dataHoje} value={dataAgendamento} onChange={(e) => setDataAgendamento(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none" />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-zinc-300">Horário</label>
-                  <input
-                    type="time"
-                    value={horarioAgendamento}
-                    onChange={(e) => setHorarioAgendamento(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  />
+                  <input type="time" value={horarioAgendamento} onChange={(e) => setHorarioAgendamento(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none" />
                 </div>
 
                 <div className="md:col-span-2">
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-500 transition-colors"
-                  >
+                  <button type="submit" className="w-full rounded-lg bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-500 transition-colors">
                     Confirmar Agendamento
                   </button>
                 </div>
               </form>
 
               {mensagem && (
-                <p className="mt-4 rounded border border-zinc-700 bg-zinc-800 p-3 text-center text-sm text-emerald-400">
-                  {mensagem}
-                </p>
+                <p className="mt-4 rounded border border-zinc-700 bg-zinc-800 p-3 text-center text-sm text-emerald-400">{mensagem}</p>
               )}
             </div>
 
@@ -269,9 +279,7 @@ export default function DashboardPage() {
                       <div>
                         <p className="font-semibold text-white">{item.servicos?.nome}</p>
                         <p className="text-xs text-zinc-400">Barbeiro: {item.barbeiros?.nome}</p>
-                        <p className="text-xs text-zinc-400">
-                          Data: {item.data.split('-').reverse().join('/')} às {item.horario}
-                        </p>
+                        <p className="text-xs text-zinc-400">Data: {item.data.split('-').reverse().join('/')} às {item.horario}</p>
                       </div>
                       <span className={`self-start sm:self-center rounded px-2.5 py-1 text-xs font-medium border uppercase tracking-wider ${
                         item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
@@ -292,55 +300,91 @@ export default function DashboardPage() {
         {/* VISÃO DO BARBEIRO */}
         {/* ========================================== */}
         {usuario?.tipo === 'barbeiro' && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
-            </div>
-            
-            {agendamentos.length === 0 ? (
-              <p className="text-sm text-zinc-400">Nenhum cliente agendado no momento.</p>
-            ) : (
-              <div className="space-y-3">
-                {agendamentos.map((item) => (
-                  <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 gap-4">
-                    <div>
-                      <p className="font-semibold text-white text-lg">{item.horario}</p>
-                      <p className="text-sm text-zinc-300">
-                        <span className="text-zinc-500">Cliente:</span> {item.clientes?.nome}
-                      </p>
-                      <p className="text-sm text-zinc-300">
-                        <span className="text-zinc-500">Serviço:</span> {item.servicos?.nome} ({item.servicos?.duracao} min)
-                      </p>
-                      <p className="text-xs text-emerald-500 mt-1">
-                        📱 {item.clientes?.telefone}
-                      </p>
-                    </div>
-                    
-                    <div className="flex flex-col items-end gap-2">
-                      {/* Menu interativo para o barbeiro trocar o status */}
-                      <select
-                        value={item.status}
-                        onChange={(e) => atualizarStatus(item.id, e.target.value)}
-                        className={`rounded px-2.5 py-1 text-xs font-medium uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${
-                          item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
-                          item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
-                          'bg-blue-950 text-blue-400 border-blue-800'
-                        }`}
-                      >
-                        <option value="agendado">Agendado</option>
-                        <option value="concluído">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                      
-                      <p className="text-xs text-zinc-500">
-                        {item.data.split('-').reverse().join('/')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+          <>
+            {/* Bloco 1: Agenda */}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
               </div>
-            )}
-          </div>
+              
+              {agendamentos.length === 0 ? (
+                <p className="text-sm text-zinc-400">Nenhum cliente agendado no momento.</p>
+              ) : (
+                <div className="space-y-3">
+                  {agendamentos.map((item) => (
+                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 gap-4">
+                      <div>
+                        <p className="font-semibold text-white text-lg">{item.horario}</p>
+                        <p className="text-sm text-zinc-300"><span className="text-zinc-500">Cliente:</span> {item.clientes?.nome}</p>
+                        <p className="text-sm text-zinc-300"><span className="text-zinc-500">Serviço:</span> {item.servicos?.nome} ({item.servicos?.duracao} min)</p>
+                        <p className="text-xs text-emerald-500 mt-1">📱 {item.clientes?.telefone}</p>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-2">
+                        <select
+                          value={item.status}
+                          onChange={(e) => atualizarStatus(item.id, e.target.value)}
+                          className={`rounded px-2.5 py-1 text-xs font-medium uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${
+                            item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
+                            item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
+                            'bg-blue-950 text-blue-400 border-blue-800'
+                          }`}
+                        >
+                          <option value="agendado">Agendado</option>
+                          <option value="concluído">Concluído</option>
+                          <option value="cancelado">Cancelado</option>
+                        </select>
+                        <p className="text-xs text-zinc-500">{item.data.split('-').reverse().join('/')}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Bloco 2: Gerenciamento de Serviços */}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
+              <h2 className="mb-4 text-xl font-semibold text-emerald-400">Gerenciar Serviços</h2>
+              
+              <form onSubmit={handleAdicionarServico} className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6 bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Nome do Serviço</label>
+                  <input type="text" value={novoServicoNome} onChange={e => setNovoServicoNome(e.target.value)} placeholder="Ex: Corte Degradê" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Preço (R$)</label>
+                  <input type="number" step="0.01" value={novoServicoPreco} onChange={e => setNovoServicoPreco(e.target.value)} placeholder="Ex: 35.00" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-300">Duração (min)</label>
+                  <input type="number" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} placeholder="Ex: 30" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
+                </div>
+                <div className="md:col-span-4 flex justify-end">
+                  <button type="submit" className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors">
+                    Adicionar Serviço
+                  </button>
+                </div>
+              </form>
+
+              {servicos.length === 0 ? (
+                <p className="text-sm text-zinc-400">Nenhum serviço cadastrado.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {servicos.map(servico => (
+                    <div key={servico.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 p-3">
+                      <div>
+                        <p className="font-semibold text-white text-sm">{servico.nome}</p>
+                        <p className="text-xs text-zinc-400">Duração: {servico.duracao} min</p>
+                      </div>
+                      <p className="font-medium text-emerald-400">
+                        R$ {Number(servico.preco).toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
 
       </section>
