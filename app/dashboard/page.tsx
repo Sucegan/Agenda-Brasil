@@ -66,11 +66,31 @@ export default function DashboardPage() {
       if (servicosData) setServicos(servicosData);
     } 
     else if (userData?.tipo === 'barbeiro') {
-      const { data: barbeiroData } = await supabase
+      // Tenta buscar o barbeiro pelo usuario_id
+      let { data: barbeiroData } = await supabase
         .from('barbeiros')
         .select('id')
         .eq('usuario_id', session.user.id)
         .single();
+
+      // Se por acaso não existir, cria automaticamente agora para evitar o erro!
+      if (!barbeiroData) {
+        const { data: novoBarbeiro, error: createError } = await supabase
+          .from('barbeiros')
+          .insert([
+            {
+              nome: userData.nome,
+              telefone: userData.telefone || '',
+              usuario_id: session.user.id,
+            }
+          ])
+          .select('id')
+          .single();
+
+        if (!createError && novoBarbeiro) {
+          barbeiroData = novoBarbeiro;
+        }
+      }
 
       if (barbeiroData) {
         setBarbeiroId(barbeiroData.id);
@@ -116,14 +136,13 @@ export default function DashboardPage() {
     if (data) setAgendamentos(data);
   };
 
-  // Máscara inteligente de Moeda (Ex: digita 3500 e vira R$ 35,00)
   const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, ''); // Remove tudo que não for número
+    let valor = e.target.value.replace(/\D/g, '');
     if (!valor) {
       setNovoServicoPrecoFormatado('');
       return;
     }
-    const numero = Number(valor) / 100; // Divide por 100 para considerar os centavos
+    const numero = Number(valor) / 100;
     const formatado = numero.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
@@ -180,7 +199,7 @@ export default function DashboardPage() {
     e.preventDefault();
     
     if (!barbeiroId) {
-      alert('Erro: ID do barbeiro não encontrado. Tente sair e entrar novamente.');
+      alert('Erro: ID do barbeiro não encontrado. Tente atualizar a página.');
       return;
     }
     if (!novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
@@ -188,7 +207,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Transforma o texto formatado (ex: "R$ 35,00") em um número real para o banco (ex: 35.00)
     const precoLimpo = parseFloat(
       novoServicoPrecoFormatado
         .replace('R$', '')
@@ -222,7 +240,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Função para deletar um serviço
   const handleExcluirServico = async (servicoId: number) => {
     if (!confirm('Deseja realmente excluir este serviço?')) return;
 
