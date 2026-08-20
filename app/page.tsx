@@ -26,21 +26,23 @@ export default function Home() {
     checkSession();
   }, [router]);
 
-  // Função para traduzir erros comuns do Supabase
+  // Tratamento de mensagens de erro totalmente em português
   const traduzirErro = (mensagemIngles: string) => {
-    if (mensagemIngles.includes('email rate limit exceeded')) {
-      return 'Limite de envios atingido. Aguarde alguns minutos ou desative a confirmação de e-mail no Supabase.';
+    const msg = mensagemIngles.toLowerCase();
+
+    if (msg.includes('rate limit') || msg.includes('over_email_send_rate_limit')) {
+      return 'Muitas tentativas em pouco tempo. Por favor, aguarde alguns instantes e tente novamente.';
     }
-    if (mensagemIngles.includes('Invalid login credentials')) {
+    if (msg.includes('invalid login credentials')) {
       return 'E-mail ou senha incorretos.';
     }
-    if (mensagemIngles.includes('User already registered')) {
+    if (msg.includes('user already registered')) {
       return 'Este e-mail já está cadastrado em nosso sistema.';
     }
-    if (mensagemIngles.includes('Password should be at least')) {
+    if (msg.includes('password should be at least')) {
       return 'A senha deve ter pelo menos 6 caracteres.';
     }
-    return `Ocorreu um erro: ${mensagemIngles}`;
+    return 'Ocorreu um erro ao processar sua solicitação. Tente novamente em instantes.';
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -75,7 +77,7 @@ export default function Home() {
         ]);
 
         if (userError) {
-          setMensagem(`Erro ao registrar dados: ${userError.message}`);
+          setMensagem('Não foi possível concluir o registro. Tente novamente.');
           setLoading(false);
           return;
         }
