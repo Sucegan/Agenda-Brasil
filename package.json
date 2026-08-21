@@ -9,11 +9,22 @@
     "lint": "eslint",
     "test": "tsx --test tests/scheduling.test.ts"
   },
+  "browserslist": [
+    "chrome >= 64",
+    "edge >= 79",
+    "firefox >= 67",
+    "ios_saf >= 12",
+    "safari >= 12"
+  ],
+  "overrides": {
+    "postcss": "8.5.26",
+    "sharp": "0.35.0"
+  },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^1.33.0",
-    "next": "16.3.1",
+    "next": "15.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hot-toast": "^2.6.0"
@@ -24,7 +35,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.1",
+    "eslint-config-next": "15.5.23",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5"

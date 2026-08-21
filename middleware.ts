@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -20,10 +20,8 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // Proteção contra 'data' nulo quando não há sessão ativa
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
-
   const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
 
   if (isDashboard && !claims?.sub) {
