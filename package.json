@@ -11,13 +11,16 @@
   },
   "browserslist": [
     "chrome >= 64",
+    "and_chr >= 64",
     "edge >= 79",
     "firefox >= 67",
+    "and_ff >= 67",
     "ios_saf >= 12",
-    "safari >= 12"
+    "safari >= 12",
+    "samsung >= 9.2",
+    "not op_mini all"
   ],
   "overrides": {
-    "postcss": "8.5.26",
     "sharp": "0.35.0"
   },
   "dependencies": {
@@ -30,13 +33,15 @@
     "react-hot-toast": "^2.6.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.20",
     "eslint": "^9",
     "eslint-config-next": "15.5.23",
-    "tailwindcss": "^4",
+    "postcss": "^8.4.49",
+    "postcss-color-functional-notation": "^8.0.8",
+    "tailwindcss": "^3.4.17",
     "tsx": "^4.23.12",
     "typescript": "^5"
   }

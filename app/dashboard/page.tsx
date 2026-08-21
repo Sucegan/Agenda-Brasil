@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import {
   Award, BarChart3, Building2, CalendarCheck2, CalendarDays, CalendarX2,
@@ -21,6 +20,38 @@ import type {
 } from '@/lib/database.types';
 
 const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'cancelado', 'nao_compareceu'];
+const DATA_LOAD_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(operation: Promise<T>, milliseconds: number, message: string) {
+  let timeout: ReturnType<typeof setTimeout>;
+  const expired = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+  return Promise.race([operation, expired]).finally(() => clearTimeout(timeout));
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Safari can revoke user activation while an async request is running.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  return copied;
+}
 
 const statusClasses: Record<AppointmentStatus, string> = {
   agendado: 'border-blue-500/30 bg-blue-500/10 text-blue-300',
@@ -31,7 +62,7 @@ const statusClasses: Record<AppointmentStatus, string> = {
 };
 
 const DashboardSkeleton = () => (
-  <main className="flex min-h-screen w-full flex-col items-center gap-6 bg-zinc-950 p-4 animate-pulse sm:p-6">
+  <main className="app-screen flex w-full animate-pulse flex-col items-center gap-6 bg-zinc-950 p-4 sm:p-6">
     <div className="h-16 w-full max-w-5xl rounded-xl border border-zinc-800 bg-zinc-900" />
     <div className="h-44 w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900" />
     <div className="h-96 w-full max-w-5xl rounded-2xl border border-zinc-800 bg-zinc-900" />
@@ -52,7 +83,7 @@ function StatCard({ label, value, icon: Icon, color = 'emerald' }: { label: stri
   const [text, border] = colors[color].split(' ');
   return (
     <div className={`relative overflow-hidden rounded-2xl border bg-zinc-900/70 p-5 shadow-xl ${border}`}>
-      <Icon className={`absolute right-4 top-4 opacity-15 ${text}`} size={44} />
+      <Icon className={`absolute right-4 top-4 opacity-[0.15] ${text}`} size={44} />
       <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</p>
       <p className={`text-2xl font-black ${text}`}>{value}</p>
     </div>
@@ -102,7 +133,6 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel }: {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [usuario, setUsuario] = useState<UserProfile | null>(null);
   const [email, setEmail] = useState('');
   const [negocio, setNegocio] = useState<BusinessSettings | null>(null);
@@ -151,18 +181,27 @@ export default function DashboardPage() {
   const hoje = brazilDateISO();
 
   const carregarDados = useCallback(async () => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError) throw new Error('Não foi possível validar sua sessão. Verifique sua conexão e tente novamente.');
-    if (!user) {
-      router.replace('/');
+    const { data: { session }, error: authError } = await withTimeout(
+      supabase.auth.getSession(),
+      DATA_LOAD_TIMEOUT_MS,
+      'Sua sessão demorou para responder. Verifique a conexão e tente novamente.',
+    );
+    if (!session) {
+      window.location.replace('/');
       return;
     }
+    if (authError) throw new Error('Não foi possível ler sua sessão. Entre novamente.');
+    const user = session.user;
     setEmail(user.email ?? '');
-    const [{ data: perfil, error: perfilError }, { data: configuracoes, error: configError }, { data: feriadosData, error: feriadosError }] = await Promise.all([
-      supabase.from('usuarios').select('*').eq('id', user.id).single(),
-      supabase.from('configuracoes_negocio').select('*').eq('id', true).maybeSingle(),
-      supabase.from('feriados_negocio').select('*').order('data'),
-    ]);
+    const [{ data: perfil, error: perfilError }, { data: configuracoes, error: configError }, { data: feriadosData, error: feriadosError }] = await withTimeout(
+      Promise.all([
+        supabase.from('usuarios').select('*').eq('id', user.id).single(),
+        supabase.from('configuracoes_negocio').select('*').eq('id', true).maybeSingle(),
+        supabase.from('feriados_negocio').select('*').order('data'),
+      ]),
+      DATA_LOAD_TIMEOUT_MS,
+      'A agenda demorou para responder. Verifique a conexão e tente novamente.',
+    );
     if (perfilError || !perfil) throw new Error('Não foi possível carregar seu perfil. Confirme o e-mail e tente novamente.');
     if (configError || feriadosError) throw configError ?? feriadosError;
     setUsuario(perfil);
@@ -177,12 +216,16 @@ export default function DashboardPage() {
       setLogoNegocio(configuracoes.logo_url ?? '');
     }
     if (perfil.tipo === 'cliente') {
-      const [{ data: profissionais, error: profissionaisError }, { data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: cliente, error: clienteError }] = await Promise.all([
-        supabase.rpc('listar_barbeiros_publicos'),
-        supabase.from('servicos').select('*').order('nome'),
-        supabase.rpc('listar_meus_agendamentos'),
-        supabase.from('clientes').select('id').eq('usuario_id', user.id).single(),
-      ]);
+      const [{ data: profissionais, error: profissionaisError }, { data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: cliente, error: clienteError }] = await withTimeout(
+        Promise.all([
+          supabase.rpc('listar_barbeiros_publicos'),
+          supabase.from('servicos').select('*').order('nome'),
+          supabase.rpc('listar_meus_agendamentos'),
+          supabase.from('clientes').select('id').eq('usuario_id', user.id).single(),
+        ]),
+        DATA_LOAD_TIMEOUT_MS,
+        'Os dados do cliente demoraram para responder. Tente novamente.',
+      );
       if (profissionaisError || servicosError || agendaError || clienteError || !cliente) throw profissionaisError ?? servicosError ?? agendaError ?? clienteError ?? new Error('Não foi possível carregar o perfil de cliente.');
       setBarbeiros(profissionais ?? []);
       setServicos(servicosData ?? []);
@@ -194,11 +237,15 @@ export default function DashboardPage() {
     }
     const { data: profissional, error: profissionalError } = await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).single();
     if (profissionalError || !profissional) throw new Error('Não foi possível carregar o perfil profissional.');
-    const [{ data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: bloqueiosData, error: bloqueiosError }] = await Promise.all([
-      supabase.from('servicos').select('*').eq('barbeiro_id', profissional.id).order('nome'),
-      supabase.rpc('listar_meus_agendamentos'),
-      supabase.from('bloqueios_agenda').select('*').eq('barbeiro_id', profissional.id).order('data_inicio'),
-    ]);
+    const [{ data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: bloqueiosData, error: bloqueiosError }] = await withTimeout(
+      Promise.all([
+        supabase.from('servicos').select('*').eq('barbeiro_id', profissional.id).order('nome'),
+        supabase.rpc('listar_meus_agendamentos'),
+        supabase.from('bloqueios_agenda').select('*').eq('barbeiro_id', profissional.id).order('data_inicio'),
+      ]),
+      DATA_LOAD_TIMEOUT_MS,
+      'Os dados profissionais demoraram para responder. Tente novamente.',
+    );
     if (servicosError || agendaError || bloqueiosError) throw servicosError ?? agendaError ?? bloqueiosError;
     setBarbeiro(profissional);
     setClienteId(null);
@@ -210,7 +257,7 @@ export default function DashboardPage() {
     setAlmocoInicio(profissional.horario_almoco_inicio ? displayTime(profissional.horario_almoco_inicio) : '');
     setAlmocoFim(profissional.horario_almoco_fim ? displayTime(profissional.horario_almoco_fim) : '');
     setDiasTrabalho(profissional.dias_trabalho);
-  }, [router]);
+  }, []);
 
   const recarregar = useCallback(() => {
     setLoading(true);
@@ -225,8 +272,7 @@ export default function DashboardPage() {
   const barbeiroId = barbeiro?.id;
 
   useEffect(() => {
-    // Running after hydration avoids a Safari race between the first render and
-    // the browser writing the session cookie after sign-in.
+    // Start after hydration so browser cookie storage is available consistently.
     const initialLoad = window.setTimeout(recarregar, 0);
     return () => window.clearTimeout(initialLoad);
   }, [recarregar]);
@@ -451,24 +497,28 @@ export default function DashboardPage() {
   const criarConvite = async () => {
     const { data, error } = await supabase.rpc('criar_convite_barbeiro');
     if (error || !data) return toast.error(error?.message ?? 'Não foi possível criar o convite.');
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}/?tipo=barbeiro&convite=${data}`);
-      toast.success('Convite copiado. Válido por 7 dias e para um único uso.');
-    } catch { toast.error('Não foi possível copiar o convite.'); }
+    const copied = await copyText(`${window.location.origin}/?tipo=barbeiro&convite=${data}`);
+    if (copied) toast.success('Convite copiado. Válido por 7 dias e para um único uso.');
+    else toast.error('Não foi possível copiar o convite.');
+  };
+
+  const sair = async () => {
+    await supabase.auth.signOut();
+    window.location.replace('/');
   };
 
   if (loading) return <DashboardSkeleton />;
 
   if (loadError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-zinc-100">
+      <main className="app-screen flex items-center justify-center bg-zinc-950 p-4 text-zinc-100">
         <section className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center shadow-2xl">
           <CircleX className="mx-auto mb-4 text-red-400" size={32} />
           <h1 className="text-xl font-black">Não foi possível abrir sua agenda</h1>
           <p className="mt-2 text-sm text-zinc-400">{loadError}</p>
           <div className="mt-6 flex justify-center gap-3">
             <button onClick={recarregar} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-500">Tentar novamente</button>
-            <button onClick={() => { void supabase.auth.signOut(); router.replace('/'); }} className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-zinc-800">Sair</button>
+            <button onClick={() => { void sair(); }} className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-zinc-800">Sair</button>
           </div>
         </section>
       </main>
@@ -482,9 +532,9 @@ export default function DashboardPage() {
   const diasOrdenados: BusinessDay[] = [0, 1, 2, 3, 4, 5, 6];
 
   return (
-    <main className="min-h-screen bg-zinc-950 pb-16 text-zinc-100 selection:bg-emerald-500/30">
-      <Toaster position="top-center" toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
-      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-4 backdrop-blur-xl sm:px-6">
+    <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100 selection:bg-emerald-500/30">
+      <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
+      <header className="safe-header sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/95 px-4 pb-4 sm:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-xl font-black text-transparent sm:text-2xl">{negocio?.nome ?? 'Agenda Brasil'}</h1>
@@ -492,7 +542,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={() => setPerfilAberto((open) => !open)} className="rounded-xl border border-zinc-800 bg-zinc-900 p-2.5 text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300" aria-label="Abrir perfil"><UserCog size={17} /></button>
-            <button onClick={() => { void supabase.auth.signOut(); router.replace('/'); }} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-xs font-bold text-zinc-300 hover:bg-zinc-800"><LogOut size={16} /><span className="hidden sm:inline">Sair</span></button>
+            <button onClick={() => { void sair(); }} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-xs font-bold text-zinc-300 hover:bg-zinc-800"><LogOut size={16} /><span className="hidden sm:inline">Sair</span></button>
           </div>
         </div>
       </header>

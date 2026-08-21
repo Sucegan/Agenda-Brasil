@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PwaRegister } from "./pwa-register";
 
@@ -14,6 +14,15 @@ export const metadata: Metadata = {
     title: "Agenda Brasil",
     statusBarStyle: "black-translucent",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  colorScheme: "dark",
+  themeColor: "#09090b",
 };
 
 export default function RootLayout({

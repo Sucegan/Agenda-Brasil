@@ -1,7 +1,6 @@
 'use client';
 
 import { useSyncExternalStore, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
 
@@ -22,7 +21,6 @@ function useInviteParams() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const { isConviteBarbeiro, conviteBarbeiro } = useInviteParams();
   const [preferirLogin, setPreferirLogin] = useState(true);
   const isLogin = !isConviteBarbeiro && preferirLogin;
@@ -57,7 +55,7 @@ function LoginForm() {
         // A full navigation waits for the browser to persist the auth cookie.
         // Client-side navigation could race this write in Safari and require a
         // manual page refresh after every sign-in.
-        window.location.assign('/dashboard');
+        window.location.replace('/dashboard');
         return;
       } else {
         if (!nome || !telefone) throw new Error('Preencha todos os campos.');
@@ -65,7 +63,7 @@ function LoginForm() {
         if (isConviteBarbeiro && !conviteBarbeiro) throw new Error('Este convite de barbeiro é inválido. Peça um novo link ao responsável.');
 
         // O Supabase Auth vai criar o usuário e a Trigger vai preencher a tabela usuarios sozinha
-        const { error: authError } = await supabase.auth.signUp({
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email, 
           password: senha,
           options: { 
@@ -91,10 +89,19 @@ function LoginForm() {
           throw new Error(authError.message);
         }
 
+        if (authData.session) {
+          toast.success('Conta criada!', { id: toastId });
+          window.location.replace('/dashboard');
+          return;
+        }
+
         toast.success('Conta criada! Verifique seu e-mail para confirmar.', { id: toastId });
-        // Se preferir redirecionar para uma tela de aviso de e-mail, pode criar. 
-        // Por ora, mandamos para o login:
-        setTimeout(() => router.push('/'), 2000);
+        window.setTimeout(() => {
+          setPreferirLogin(true);
+          setSenha('');
+          setNome('');
+          setTelefone('');
+        }, 2000);
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a operação.', { id: toastId });
@@ -110,19 +117,20 @@ function LoginForm() {
     }
 
     const toastId = toast.loading('Enviando link de recuperação...');
-    const supabase = await getSupabase();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/redefinir-senha`,
-    });
-    if (error) {
-      toast.error('Não foi possível enviar o link. Verifique o e-mail informado.', { id: toastId });
-      return;
+    try {
+      const supabase = await getSupabase();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      });
+      if (error) throw error;
+      toast.success('Enviamos um link para você criar uma nova senha.', { id: toastId });
+    } catch {
+      toast.error('Não foi possível enviar o link. Verifique sua conexão e o e-mail informado.', { id: toastId });
     }
-    toast.success('Enviamos um link para você criar uma nova senha.', { id: toastId });
   };
 
   return (
-    <div className="w-full max-w-md z-10 bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 p-8 rounded-3xl shadow-2xl">
+    <div className="z-10 w-full max-w-md rounded-3xl border border-zinc-800/80 bg-zinc-900/90 p-6 shadow-2xl sm:p-8">
       <div className="text-center mb-8">
         <div className="mx-auto w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-xl">
           <Scissors className="text-emerald-400" size={32} />
@@ -141,7 +149,7 @@ function LoginForm() {
       
       <form onSubmit={handleSubmit} className="space-y-4">
         {!isLogin && (
-          <div className="animate-in fade-in slide-in-from-top-4 duration-300 space-y-4">
+          <div className="signup-fields space-y-4">
             <div className="relative">
               <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
               <div className="relative">
@@ -172,7 +180,7 @@ function LoginForm() {
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><Lock size={18} /></div>
             <input type={showPassword ? "text" : "password"} id="senha" name="senha" autoComplete={isLogin ? "current-password" : "new-password"} value={senha} onChange={e=>setSenha(e.target.value)} placeholder="••••••••" required className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 pr-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-emerald-500 hover:text-emerald-400 transition-colors">
+            <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex items-center px-3 text-emerald-500 transition-colors hover:text-emerald-400">
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
@@ -203,10 +211,8 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 relative selection:bg-emerald-500/30">
-      <Toaster position="top-center" toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
-      
+    <main className="app-screen login-background relative flex flex-col items-center justify-center px-4 py-6 selection:bg-emerald-500/30">
+      <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
       <LoginForm />
     </main>
   );

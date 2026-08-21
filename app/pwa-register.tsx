@@ -4,11 +4,28 @@ import { useEffect } from 'react';
 
 export function PwaRegister() {
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      // Safari can keep an older worker for longer than desktop browsers. Do
-      // not reuse the HTTP cache when checking the small offline-only worker.
-      void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => undefined);
+    if (!('serviceWorker' in navigator)) return;
+
+    const register = async () => {
+      try {
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+          scope: '/',
+          updateViaCache: 'none',
+        });
+        await registration.update();
+      } catch {
+        // Offline support is progressive enhancement; it must never prevent
+        // the online scheduling experience from loading.
+      }
+    };
+
+    if (document.readyState === 'complete') {
+      void register();
+      return;
     }
+
+    window.addEventListener('load', register, { once: true });
+    return () => window.removeEventListener('load', register);
   }, []);
 
   return null;
