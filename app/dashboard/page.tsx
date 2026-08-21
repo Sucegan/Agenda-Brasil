@@ -97,7 +97,6 @@ export default function DashboardPage() {
   const [horarioFim, setHorarioFim] = useState('18:00');
   const [inicioAlmoco, setInicioAlmoco] = useState('12:00');
   const [fimAlmoco, setFimAlmoco] = useState('13:00');
-  const [diasTrabalho, setDiasTrabalho] = useState('Segunda a Sábado');
 
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -152,7 +151,6 @@ export default function DashboardPage() {
         setHorarioFim(barbeiroData.horario_fim || '18:00');
         setInicioAlmoco(barbeiroData.inicio_almoco || '12:00');
         setFimAlmoco(barbeiroData.fim_almoco || '13:00');
-        setDiasTrabalho(barbeiroData.dias_trabalho || 'Segunda a Sábado');
         carregarAgendamentosBarbeiro(barbeiroData.id);
         const { data: servicosData } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroData.id).order('nome');
         if (servicosData) setServicos(servicosData);
@@ -206,26 +204,48 @@ export default function DashboardPage() {
     setHorariosDisponiveis(horariosValidos); setSelectedData(dataSelecionada); setSelectedHorario('');
   };
 
+  // AGENDAR USANDO TOAST.PROMISE (BLINDADO CONTRA BUGS)
   const handleAgendar = async () => {
-    if (!clienteId || !selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) return toast.error('Preencha todos os campos.');
-    const toastId = toast.loading('Processando agendamento...');
-    const { error } = await supabase.from('agendamentos').insert([{ cliente_id: clienteId, barbeiro_id: selectedBarbeiro.id, servico_id: selectedServico.id, data: selectedData, horario: `${selectedHorario}:00`, status: 'agendado' }]);
-    if (error) toast.error(`Erro: ${error.message}`, { id: toastId });
-    else {
-      toast.success('Agendamento realizado! 🎉', { id: toastId });
-      setTimeout(() => { setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario(''); carregarAgendamentosCliente(clienteId); }, 1000);
+    if (!clienteId || !selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) {
+      toast.error('Preencha todos os campos.');
+      return;
     }
+
+    const promessa = async () => {
+      const { error } = await supabase.from('agendamentos').insert([{ 
+        cliente_id: clienteId, 
+        barbeiro_id: selectedBarbeiro.id, 
+        servico_id: selectedServico.id, 
+        data: selectedData, 
+        horario: `${selectedHorario}:00`, 
+        status: 'agendado' 
+      }]);
+      if (error) throw new Error(error.message);
+      setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario('');
+      carregarAgendamentosCliente(clienteId);
+    };
+
+    toast.promise(promessa(), {
+      loading: 'Processando agendamento...',
+      success: 'Agendamento realizado com sucesso! 🎉',
+      error: (err) => `Erro: ${err.message}`
+    });
   };
 
   const cancelarAgendamentoCliente = async (id: number, data: string, horario: string) => {
     const [ano, mes, dia] = data.split('-'); const [hora, min] = horario.split(':');
     const diffHoras = (new Date(Number(ano), Number(mes) - 1, Number(dia), Number(hora), Number(min)).getTime() - new Date().getTime()) / (1000 * 60 * 60);
     if (diffHoras > 0 && diffHoras < 2) return toast.error('Ligue para a barbearia para cancelar com menos de 2h.');
+    
     if (confirm('Cancelar este agendamento?')) {
-      const toastId = toast.loading('Cancelando...');
-      const { error } = await supabase.from('agendamentos').update({ status: 'cancelado' }).eq('id', id);
-      if (error) toast.error('Erro ao cancelar.', { id: toastId });
-      else { toast.success('Agendamento cancelado.', { id: toastId }); if (clienteId) carregarAgendamentosCliente(clienteId); }
+      toast.promise(
+        async () => {
+          const { error } = await supabase.from('agendamentos').update({ status: 'cancelado' }).eq('id', id);
+          if (error) throw new Error();
+          if (clienteId) carregarAgendamentosCliente(clienteId);
+        },
+        { loading: 'Cancelando...', success: 'Agendamento cancelado.', error: 'Erro ao cancelar.' }
+      );
     }
   };
 
@@ -240,39 +260,56 @@ export default function DashboardPage() {
   const handleSalvarExpediente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!barbeiroId) return;
-    const toastId = toast.loading('Salvando horários...');
-    const { error } = await supabase.from('barbeiros').update({ horario_inicio: horarioInicio, horario_fim: horarioFim, inicio_almoco: inicioAlmoco, fim_almoco: fimAlmoco, dias_trabalho: diasTrabalho }).eq('id', barbeiroId);
-    if (error) toast.error('Erro ao salvar.', { id: toastId });
-    else toast.success('Expediente atualizado!', { id: toastId });
+    toast.promise(
+      async () => {
+        const { error } = await supabase.from('barbeiros').update({ 
+          horario_inicio: horarioInicio, 
+          horario_fim: horarioFim, 
+          inicio_almoco: inicioAlmoco, 
+          fim_almoco: fimAlmoco 
+        }).eq('id', barbeiroId);
+        if (error) throw new Error();
+      },
+      { loading: 'Salvando horários...', success: 'Expediente atualizado!', error: 'Erro ao salvar expediente.' }
+    );
   };
 
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
     await supabase.from('agendamentos').update({ status: novoStatus }).eq('id', agendamentoId);
-    toast.success(`Status atualizado!`);
+    toast.success('Status atualizado!');
     if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
   };
 
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barbeiroId || !novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) return toast.error('Preencha tudo.');
-    const preco = parseFloat(novoServicoPrecoFormatado.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
-    const toastId = toast.loading('Salvando...');
-    const { error } = await supabase.from('servicos').insert([{ nome: novoServicoNome, preco, duracao: parseInt(novoServicoDuracao), barbeiro_id: barbeiroId }]);
-    if (error) toast.error('Erro ao salvar.', { id: toastId });
-    else {
-      toast.success('Serviço adicionado!', { id: toastId });
-      setNovoServicoNome(''); setNovoServicoPrecoFormatado(''); setNovoServicoDuracao('');
-      const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
-      if (data) setServicos(data);
+    if (!barbeiroId || !novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
+      toast.error('Preencha tudo.');
+      return;
     }
+    const preco = parseFloat(novoServicoPrecoFormatado.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+
+    toast.promise(
+      async () => {
+        const { error } = await supabase.from('servicos').insert([{ nome: novoServicoNome, preco, duracao: parseInt(novoServicoDuracao), barbeiro_id: barbeiroId }]);
+        if (error) throw new Error();
+        setNovoServicoNome(''); setNovoServicoPrecoFormatado(''); setNovoServicoDuracao('');
+        const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
+        if (data) setServicos(data);
+      },
+      { loading: 'Adicionando serviço...', success: 'Serviço adicionado!', error: 'Erro ao adicionar serviço.' }
+    );
   };
 
   const handleExcluirServico = async (servicoId: number) => {
     if (!confirm('Excluir este serviço?')) return;
-    await supabase.from('servicos').delete().eq('id', servicoId);
-    toast.success('Serviço excluído.');
-    const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
-    if (data) setServicos(data);
+    toast.promise(
+      async () => {
+        await supabase.from('servicos').delete().eq('id', servicoId);
+        const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
+        if (data) setServicos(data);
+      },
+      { loading: 'Excluindo...', success: 'Serviço excluído.', error: 'Erro ao excluir.' }
+    );
   };
 
   const hoje = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -320,7 +357,7 @@ export default function DashboardPage() {
                       {barbeiros.map((b: any) => (
                         <button key={b.id} onClick={() => { setSelectedBarbeiro(b); setStep(2); }} className="flex items-center gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-800/30 hover:border-emerald-500/50 hover:bg-zinc-800 transition-all text-left group">
                           <div className="h-12 w-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl font-bold text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">{b.nome?.charAt(0).toUpperCase()}</div>
-                          <div><p className="font-semibold text-white">{b.nome}</p><p className="text-xs text-zinc-400">{b.dias_trabalho}</p></div>
+                          <div><p className="font-semibold text-white">{b.nome}</p><p className="text-xs text-zinc-400">Atendimento Profissional</p></div>
                         </button>
                       ))}
                     </div>
@@ -444,7 +481,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Cards Financeiros Refinados com Ícones Brilhantes */}
+            {/* Cards Financeiros */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                <div className="bg-zinc-900/60 backdrop-blur-sm border border-zinc-800/80 p-6 rounded-2xl shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition-all">
                  <div className="absolute top-4 right-4 text-emerald-400/20 group-hover:text-emerald-400/30 transition-colors"><Wallet size={48} /></div>
@@ -485,7 +522,7 @@ export default function DashboardPage() {
               </form>
             </div>
 
-            {/* Agenda com Dropdown Customizado */}
+            {/* Agenda */}
             <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-sm p-6 shadow-xl">
               <h2 className="mb-6 text-lg font-bold flex items-center gap-2 text-emerald-400"><CalendarDays size={20} /> Minha Agenda</h2>
               {agendamentos.length === 0 ? <p className="text-sm text-zinc-500">Nenhum cliente agendado.</p> : (
@@ -560,7 +597,6 @@ export default function DashboardPage() {
         )}
       </section>
 
-      {/* ESTILOS GLOBAIS PARA INPUTS DE TEMPO */}
       <style jsx global>{`
         .hide-scrollbar::-webkit-scrollbar { display: none; } 
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
