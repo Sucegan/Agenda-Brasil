@@ -1,75 +1,80 @@
 'use client';
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
-type TipoUsuario = 'cliente' | 'barbeiro';
-type Usuario = { id: string; nome: string; telefone: string | null; tipo: TipoUsuario };
-type Barbeiro = { id: number; nome: string; horario_inicio: string; horario_fim: string; dias_trabalho: number[] };
-type Servico = { id: number; nome: string; preco: number | string; duracao: number; barbeiro_id: number };
-type Agendamento = { id: number; data: string; horario: string; status: string; barbeiros?: { nome: string } | null; clientes?: { nome: string; telefone: string } | null; servicos?: { nome: string; preco?: number | string; duracao?: number } | null };
-
 export default function DashboardPage() {
-  const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [usuario, setUsuario] = useState<any>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [barbeiroId, setBarbeiroId] = useState<number | null>(null);
-  const [barbeiros, setBarbeiros] = useState<Barbeiro[]>([]);
-  const [servicos, setServicos] = useState<Servico[]>([]);
-  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
+  const [barbeiros, setBarbeiros] = useState<any[]>([]);
+  const [servicos, setServicos] = useState<any[]>([]);
+  const [agendamentos, setAgendamentos] = useState<any[]>([]);
 
-  // Formulário de Agendamento (Visão Cliente)
-  const [selectedBarbeiro, setSelectedBarbeiro] = useState('');
-  const [selectedServico, setSelectedServico] = useState('');
-  const [dataAgendamento, setDataAgendamento] = useState('');
-  const [horarioAgendamento, setHorarioAgendamento] = useState('');
+  // ==========================================
+  // ESTADOS DO NOVO FLUXO DE AGENDAMENTO (WIZARD)
+  // ==========================================
+  const [selectedBarbeiro, setSelectedBarbeiro] = useState<any>(null);
+  const [selectedServico, setSelectedServico] = useState<any>(null);
+  const [selectedData, setSelectedData] = useState<string>('');
+  const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
+  const [selectedHorario, setSelectedHorario] = useState<string>('');
+  const [diasProximos, setDiasProximos] = useState<any[]>([]);
+  const [step, setStep] = useState<number>(1); // 1: Barbeiro, 2: Serviço, 3: Data/Hora
 
-  // Formulário de Serviços (Visão Barbeiro)
+  // Formulário de Serviços e Expediente (Visão Barbeiro)
   const [novoServicoNome, setNovoServicoNome] = useState('');
   const [novoServicoPrecoFormatado, setNovoServicoPrecoFormatado] = useState('');
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
-
-  // Configurações de Expediente do Barbeiro
   const [horarioInicio, setHorarioInicio] = useState('08:00');
   const [horarioFim, setHorarioFim] = useState('18:00');
-  const [diasTrabalho, setDiasTrabalho] = useState('1,2,3,4,5,6');
+  const [diasTrabalho, setDiasTrabalho] = useState('Segunda a Sábado');
 
   const [loading, setLoading] = useState(true);
   const [mensagem, setMensagem] = useState('');
   const router = useRouter();
 
-  const dataHoje = new Date().toISOString().split('T')[0];
-  const formatarDias = (dias: number[] | string | null) => {
-    if (!Array.isArray(dias)) return dias || 'Não informado';
-    const nomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    return dias.map((dia) => nomes[dia]).join(', ');
+  useEffect(() => {
+    carregarDados();
+    gerarDiasProximos();
+  }, []);
+
+  // Gera os próximos 15 dias para o carrossel de datas
+  const gerarDiasProximos = () => {
+    const dias = [];
+    const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    
+    for (let i = 0; i < 15; i++) {
+      const data = new Date();
+      data.setDate(data.getDate() + i);
+      dias.push({
+        iso: data.toISOString().split('T')[0],
+        dia: data.getDate(),
+        mes: meses[data.getMonth()],
+        semana: diasSemana[data.getDay()]
+      });
+    }
+    setDiasProximos(dias);
   };
 
-  const carregarDados = useCallback(async () => {
+  const carregarDados = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push('/');
       return;
     }
 
-    const { data: userData } = await supabase
-      .from('usuarios')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
-
+    const { data: userData } = await supabase.from('usuarios').select('*').eq('id', session.user.id).single();
     setUsuario(userData);
 
     if (userData?.tipo === 'cliente') {
-      // Tenta buscar o cliente pelo usuario_id
-      const { data: clienteData } = await supabase
-        .from('clientes')
-        .select('id')
-        .eq('usuario_id', session.user.id)
-        .single();
-
+      let { data: clienteData } = await supabase.from('clientes').select('id').eq('usuario_id', session.user.id).single();
+      if (!clienteData) {
+        const { data: novoCliente } = await supabase.from('clientes').insert([{ nome: userData.nome, telefone: userData.telefone || '(00) 00000-0000', email: session.user.email, usuario_id: session.user.id }]).select('id').single();
+        if (novoCliente) clienteData = novoCliente;
+      }
       if (clienteData) {
         setClienteId(clienteData.id);
         carregarAgendamentosCliente(clienteData.id);
@@ -81,212 +86,165 @@ export default function DashboardPage() {
       if (servicosData) setServicos(servicosData);
     } 
     else if (userData?.tipo === 'barbeiro') {
-      const { data: barbeiroData } = await supabase
-        .from('barbeiros')
-        .select('*')
-        .eq('usuario_id', session.user.id)
-        .single();
-
+      let { data: barbeiroData } = await supabase.from('barbeiros').select('*').eq('usuario_id', session.user.id).single();
+      if (!barbeiroData) {
+        const { data: novoBarbeiro } = await supabase.from('barbeiros').insert([{ nome: userData.nome, telefone: userData.telefone || '', usuario_id: session.user.id, horario_inicio: '08:00', horario_fim: '18:00', dias_trabalho: 'Segunda a Sábado' }]).select('*').single();
+        if (novoBarbeiro) barbeiroData = novoBarbeiro;
+      }
       if (barbeiroData) {
         setBarbeiroId(barbeiroData.id);
         setHorarioInicio(barbeiroData.horario_inicio || '08:00');
         setHorarioFim(barbeiroData.horario_fim || '18:00');
-        setDiasTrabalho(Array.isArray(barbeiroData.dias_trabalho) ? barbeiroData.dias_trabalho.join(',') : barbeiroData.dias_trabalho || '1,2,3,4,5,6');
-
+        setDiasTrabalho(barbeiroData.dias_trabalho || 'Segunda a Sábado');
         carregarAgendamentosBarbeiro(barbeiroData.id);
-
-        const { data: servicosData } = await supabase
-          .from('servicos')
-          .select('*')
-          .eq('barbeiro_id', barbeiroData.id)
-          .order('nome');
+        const { data: servicosData } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroData.id).order('nome');
         if (servicosData) setServicos(servicosData);
       }
     }
-
     setLoading(false);
-  }, [router]);
+  };
 
-  useEffect(() => {
-    void carregarDados();
-  }, [carregarDados]);
+  const carregarAgendamentosCliente = async (cId: number) => {
+    const { data } = await supabase.from('agendamentos').select(`id, data, horario, status, barbeiros(nome), servicos(nome, preco)`).eq('cliente_id', cId).order('data', { ascending: true }).order('horario', { ascending: true });
+    if (data) setAgendamentos(data);
+  };
 
-  async function carregarAgendamentosCliente(cId: number) {
-    const { data } = await supabase
+  const carregarAgendamentosBarbeiro = async (bId: number) => {
+    const { data } = await supabase.from('agendamentos').select(`id, data, horario, status, clientes(nome, telefone), servicos(nome, duracao)`).eq('barbeiro_id', bId).order('data', { ascending: true }).order('horario', { ascending: true });
+    if (data) setAgendamentos(data);
+  };
+
+  // ==========================================
+  // MOTOR INTELIGENTE DE HORÁRIOS
+  // ==========================================
+  const calcularHorariosDisponiveis = async (dataSelecionada: string) => {
+    if (!selectedBarbeiro || !selectedServico) return;
+    
+    // Busca os agendamentos do barbeiro neste dia específico para não sobrepor horários
+    const { data: agendaDoDia } = await supabase
       .from('agendamentos')
-      .select(`
-        id, data, horario, status,
-        barbeiros(nome), servicos(nome, preco)
-      `)
-      .eq('cliente_id', cId)
-      .order('data', { ascending: true })
-      .order('horario', { ascending: true });
+      .select('horario, servicos(duracao), status')
+      .eq('barbeiro_id', selectedBarbeiro.id)
+      .eq('data', dataSelecionada)
+      .neq('status', 'cancelado');
 
-    if (data) setAgendamentos(data as unknown as Agendamento[]);
-  }
+    const converterParaMinutos = (horaStr: string) => {
+      const [h, m] = horaStr.split(':').map(Number);
+      return h * 60 + m;
+    };
 
-  async function carregarAgendamentosBarbeiro(bId: number) {
-    const { data } = await supabase
-      .from('agendamentos')
-      .select(`
-        id, data, horario, status,
-        clientes(nome, telefone), servicos(nome, duracao)
-      `)
-      .eq('barbeiro_id', bId)
-      .order('data', { ascending: true })
-      .order('horario', { ascending: true });
+    const converterParaHora = (minutosTotal: number) => {
+      const h = Math.floor(minutosTotal / 60);
+      const m = minutosTotal % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
 
-    if (data) setAgendamentos(data as unknown as Agendamento[]);
-  }
-
-  const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const valor = e.target.value.replace(/\D/g, '');
-    if (!valor) {
-      setNovoServicoPrecoFormatado('');
-      return;
-    }
-    const numero = Number(valor) / 100;
-    const formatado = numero.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
+    const inicioExpediente = converterParaMinutos(selectedBarbeiro.horario_inicio || '08:00');
+    const fimExpediente = converterParaMinutos(selectedBarbeiro.horario_fim || '18:00');
+    const duracaoServico = selectedServico.duracao;
+    
+   // Converte os agendamentos ocupados em blocos de minutos [inicio, fim]
+    const bloqueios = (agendaDoDia || []).map((ag: any) => {
+      const inicio = converterParaMinutos(ag.horario);
+      const duracao = Array.isArray(ag.servicos) ? ag.servicos[0]?.duracao : ag.servicos?.duracao;
+      const fim = inicio + (duracao || 30);
+      return { inicio, fim };
     });
-    setNovoServicoPrecoFormatado(formatado);
-  };
 
-  const handleSalvarExpediente = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!barbeiroId) return;
+    let horariosValidos = [];
+    // Pula de 30 em 30 minutos (ou pode ser 15 em 15)
+    for (let tempoAtual = inicioExpediente; (tempoAtual + duracaoServico) <= fimExpediente; tempoAtual += 30) {
+      const fimDoSlot = tempoAtual + duracaoServico;
+      
+      // Checa se este horário sobrepõe algum horário já agendado
+      const temConflito = bloqueios.some(bloqueio => {
+        return (tempoAtual < bloqueio.fim && fimDoSlot > bloqueio.inicio);
+      });
 
-    const { error } = await supabase
-      .from('barbeiros')
-      .update({
-        horario_inicio: horarioInicio,
-        horario_fim: horarioFim,
-        dias_trabalho: diasTrabalho.split(',').map((dia) => Number(dia.trim())).filter((dia) => Number.isInteger(dia) && dia >= 0 && dia <= 6),
-      })
-      .eq('id', barbeiroId);
-
-    if (error) {
-      setMensagem(`Erro ao salvar expediente: ${error.message}`);
-    } else {
-      setMensagem('Expediente atualizado com sucesso. Use os números 0–6 para domingo–sábado.');
+      if (!temConflito) {
+        horariosValidos.push(converterParaHora(tempoAtual));
+      }
     }
+
+    setHorariosDisponiveis(horariosValidos);
+    setSelectedData(dataSelecionada);
+    setSelectedHorario('');
   };
 
-  const handleAgendar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMensagem('');
+  const handleSelectBarbeiro = (barbeiro: any) => {
+    setSelectedBarbeiro(barbeiro);
+    setStep(2);
+  };
 
-    if (!clienteId || !selectedBarbeiro || !selectedServico || !dataAgendamento || !horarioAgendamento) {
+  const handleSelectServico = (servico: any) => {
+    setSelectedServico(servico);
+    setStep(3);
+  };
+
+  const handleAgendar = async () => {
+    setMensagem('');
+    if (!clienteId || !selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) {
       setMensagem('Preencha todos os campos do agendamento.');
       return;
     }
 
-    const { error } = await supabase.rpc('criar_agendamento', {
-      p_barbeiro_id: Number(selectedBarbeiro),
-      p_servico_id: Number(selectedServico),
-      p_data: dataAgendamento,
-      p_horario: horarioAgendamento,
-    });
+    const { error } = await supabase.from('agendamentos').insert([
+      { cliente_id: clienteId, barbeiro_id: selectedBarbeiro.id, servico_id: selectedServico.id, data: selectedData, horario: `${selectedHorario}:00`, status: 'agendado' },
+    ]);
 
     if (error) {
       setMensagem(`Erro ao agendar: ${error.message}`);
     } else {
       setMensagem('Agendamento realizado com sucesso!');
-      setSelectedBarbeiro('');
-      setSelectedServico('');
-      setDataAgendamento('');
-      setHorarioAgendamento('');
-      carregarAgendamentosCliente(clienteId);
+      setTimeout(() => {
+        setStep(1);
+        setSelectedBarbeiro(null);
+        setSelectedServico(null);
+        setSelectedData('');
+        setSelectedHorario('');
+        setMensagem('');
+        carregarAgendamentosCliente(clienteId);
+      }, 2000);
     }
+  };
+
+  // Funções do Barbeiro
+  const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(/\D/g, '');
+    if (!valor) return setNovoServicoPrecoFormatado('');
+    setNovoServicoPrecoFormatado((Number(valor) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+  };
+
+  const handleSalvarExpediente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!barbeiroId) return;
+    const { error } = await supabase.from('barbeiros').update({ horario_inicio: horarioInicio, horario_fim: horarioFim, dias_trabalho: diasTrabalho }).eq('id', barbeiroId);
+    if (error) alert(`Erro ao salvar expediente: ${error.message}`);
+    else alert('Horários e dias de atendimento atualizados com sucesso!');
   };
 
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
-    const { error } = await supabase.rpc('atualizar_status_agendamento', {
-      p_agendamento_id: agendamentoId,
-      p_status: novoStatus,
-    });
-
-    if (error) {
-      setMensagem(`Erro ao atualizar status: ${error.message}`);
-    } else {
-      if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
-    }
-  };
-
-  const cancelarAgendamento = async (agendamentoId: number) => {
-    const { error } = await supabase.rpc('cancelar_meu_agendamento', { p_agendamento_id: agendamentoId });
-    if (error) {
-      setMensagem(`Erro ao cancelar: ${error.message}`);
-      return;
-    }
-    setMensagem('Agendamento cancelado.');
-    if (clienteId) carregarAgendamentosCliente(clienteId);
+    await supabase.from('agendamentos').update({ status: novoStatus }).eq('id', agendamentoId);
+    if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
   };
 
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!barbeiroId) {
-      setMensagem('Erro: ID do barbeiro não encontrado.');
-      return;
-    }
-    if (!novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
-      setMensagem('Preencha todos os campos para cadastrar o serviço.');
-      return;
-    }
-
-    const precoLimpo = parseFloat(
-      novoServicoPrecoFormatado
-        .replace('R$', '')
-        .replace(/\./g, '')
-        .replace(',', '.')
-        .trim()
-    );
-
-    const { error } = await supabase.from('servicos').insert([
-      {
-        nome: novoServicoNome,
-        preco: precoLimpo,
-        duracao: parseInt(novoServicoDuracao),
-        barbeiro_id: barbeiroId,
-      }
-    ]);
-
-    if (error) {
-      setMensagem(`Erro ao adicionar serviço: ${error.message}`);
-    } else {
-      setNovoServicoNome('');
-      setNovoServicoPrecoFormatado('');
-      setNovoServicoDuracao('');
-      
-      const { data } = await supabase
-        .from('servicos')
-        .select('*')
-        .eq('barbeiro_id', barbeiroId)
-        .order('nome');
+    if (!barbeiroId || !novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) return alert('Preencha todos os campos.');
+    const precoLimpo = parseFloat(novoServicoPrecoFormatado.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+    const { error } = await supabase.from('servicos').insert([{ nome: novoServicoNome, preco: precoLimpo, duracao: parseInt(novoServicoDuracao), barbeiro_id: barbeiroId }]);
+    if (!error) {
+      setNovoServicoNome(''); setNovoServicoPrecoFormatado(''); setNovoServicoDuracao('');
+      const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
       if (data) setServicos(data);
     }
   };
 
   const handleExcluirServico = async (servicoId: number) => {
-    if (!confirm('Deseja realmente excluir este serviço?')) return;
-
-    const { error } = await supabase
-      .from('servicos')
-      .delete()
-      .eq('id', servicoId);
-
-    if (error) {
-      setMensagem(`Erro ao excluir: ${error.message}`);
-    } else {
-      const { data } = await supabase
-        .from('servicos')
-        .select('*')
-        .eq('barbeiro_id', barbeiroId)
-        .order('nome');
-      if (data) setServicos(data);
-    }
+    if (!confirm('Excluir este serviço?')) return;
+    await supabase.from('servicos').delete().eq('id', servicoId);
+    const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
+    if (data) setServicos(data);
   };
 
   const handleLogout = async () => {
@@ -294,128 +252,178 @@ export default function DashboardPage() {
     router.push('/');
   };
 
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white">
-        <p className="text-zinc-400">Carregando painel...</p>
-      </main>
-    );
-  }
+  if (loading) return <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white"><p>Carregando painel...</p></main>;
 
-  const servicosDoBarbeiroSelecionado = servicos.filter(
-    (s) => s.barbeiro_id === Number(selectedBarbeiro)
-  );
-
-  const barbeiroSelecionadoInfo = barbeiros.find((b) => b.id === Number(selectedBarbeiro));
+  const servicosDoBarbeiroSelecionado = servicos.filter((s) => s.barbeiro_id === selectedBarbeiro?.id);
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-6 text-white">
+    <main className="min-h-screen bg-zinc-950 p-6 text-white font-sans">
       <header className="mx-auto flex max-w-4xl items-center justify-between border-b border-zinc-800 pb-4">
         <div>
-          <h1 className="text-2xl font-bold">Agenda Brasil</h1>
-          <p className="text-sm text-zinc-400">
+          <h1 className="text-2xl font-bold tracking-tight">Agenda Brasil</h1>
+          <p className="text-sm text-zinc-400 mt-1">
             Olá, {usuario?.nome} <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300 ml-2 capitalize">{usuario?.tipo}</span>
           </p>
         </div>
-        <button
-          onClick={handleLogout}
-          className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700 transition-colors"
-        >
-          Sair
-        </button>
+        <button onClick={handleLogout} className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors">Sair</button>
       </header>
 
       <section className="mx-auto mt-8 max-w-4xl space-y-6">
-        {mensagem && (
-          <p role="status" className="rounded border border-zinc-700 bg-zinc-800 p-3 text-center text-sm text-zinc-200">{mensagem}</p>
-        )}
         
+        {/* ========================================================
+            VISÃO DO CLIENTE (O NOVO FLUXO STEP-BY-STEP)
+        ======================================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
-              <h2 className="mb-4 text-xl font-semibold text-emerald-400">Novo Agendamento</h2>
-              <form onSubmit={handleAgendar} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Barbeiro</label>
-                  <select 
-                    value={selectedBarbeiro} 
-                    onChange={(e) => {
-                      setSelectedBarbeiro(e.target.value);
-                      setSelectedServico('');
-                    }} 
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="">Selecione um barbeiro</option>
-                    {barbeiros.map((b) => (<option key={b.id} value={b.id}>{b.nome}</option>))}
-                  </select>
-                </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-xl font-bold text-emerald-400">Novo Agendamento</h2>
+                 {step > 1 && (
+                    <button onClick={() => {setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData('');}} className="text-xs flex items-center text-zinc-400 hover:text-white transition">
+                       ↺ Reiniciar
+                    </button>
+                 )}
+              </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Serviço</label>
-                  <select 
-                    value={selectedServico} 
-                    onChange={(e) => setSelectedServico(e.target.value)}
-                    disabled={!selectedBarbeiro}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
-                  >
-                    <option value="">
-                      {!selectedBarbeiro ? 'Escolha um barbeiro primeiro' : 'Selecione um serviço'}
-                    </option>
-                    {servicosDoBarbeiroSelecionado.map((s) => (
-                      <option key={s.id} value={s.id}>{s.nome} - R$ {Number(s.preco).toFixed(2)} ({s.duracao} min)</option>
+              {/* PASSO 1: ESCOLHER O BARBEIRO */}
+              {step === 1 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                  <p className="mb-4 text-sm font-medium text-zinc-300">Selecione o profissional:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {barbeiros.map(barbeiro => (
+                      <button key={barbeiro.id} onClick={() => handleSelectBarbeiro(barbeiro)} className="flex items-center gap-4 p-4 rounded-xl border border-zinc-700 bg-zinc-800 hover:border-emerald-500 hover:bg-zinc-800/80 transition-all text-left group">
+                        <div className="h-12 w-12 rounded-full bg-zinc-700 flex items-center justify-center text-xl font-bold text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-900 transition-colors">
+                          {barbeiro.nome.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-white">{barbeiro.nome}</p>
+                          <p className="text-xs text-zinc-400">{barbeiro.dias_trabalho}</p>
+                        </div>
+                      </button>
                     ))}
-                  </select>
-                </div>
-
-                {barbeiroSelecionadoInfo && (
-                  <div className="md:col-span-2 rounded bg-zinc-800/40 p-3 border border-zinc-800 text-xs text-zinc-300 flex justify-between">
-                    <span>📅 <b>Dias:</b> {formatarDias(barbeiroSelecionadoInfo.dias_trabalho)}</span>
-                    <span>⏰ <b>Horário:</b> {barbeiroSelecionadoInfo.horario_inicio} às {barbeiroSelecionadoInfo.horario_fim}</span>
                   </div>
-                )}
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Data</label>
-                  <input type="date" min={dataHoje} value={dataAgendamento} onChange={(e) => setDataAgendamento(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none" />
                 </div>
+              )}
 
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Horário</label>
-                  <input type="time" value={horarioAgendamento} onChange={(e) => setHorarioAgendamento(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none" />
+              {/* PASSO 2: ESCOLHER O SERVIÇO */}
+              {step === 2 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+                    <span className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700">Profissional: <b className="text-white">{selectedBarbeiro.nome}</b></span>
+                  </div>
+                  
+                  <p className="mb-4 text-sm font-medium text-zinc-300">Selecione um de nossos serviços 👇</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {servicosDoBarbeiroSelecionado.map((servico) => (
+                      <button key={servico.id} onClick={() => handleSelectServico(servico)} className="flex flex-col items-center justify-center p-4 rounded-xl border border-amber-600/30 bg-amber-500/10 hover:bg-amber-500 hover:text-zinc-950 transition-all text-center group text-amber-500">
+                        <span className="font-semibold text-sm group-hover:text-zinc-950">{servico.nome}</span>
+                        <span className="font-bold mt-1 group-hover:text-zinc-900">R$ {Number(servico.preco).toFixed(2)}</span>
+                        <span className="text-[10px] opacity-70 mt-1">({servico.duracao} min)</span>
+                      </button>
+                    ))}
+                    {servicosDoBarbeiroSelecionado.length === 0 && (
+                      <p className="col-span-full text-sm text-zinc-500">Nenhum serviço cadastrado para este profissional.</p>
+                    )}
+                  </div>
                 </div>
+              )}
 
-                <div className="md:col-span-2">
-                  <button type="submit" className="w-full rounded-lg bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-500 transition-colors">
-                    Confirmar Agendamento
-                  </button>
+              {/* PASSO 3: ESCOLHER DATA E HORA */}
+              {step === 3 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="mb-6 flex gap-2 flex-wrap pb-2">
+                    <button onClick={() => setStep(1)} className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700 hover:text-white">Profissional: <b className="text-white">{selectedBarbeiro.nome}</b></button>
+                    <button onClick={() => setStep(2)} className="shrink-0 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-500 border border-amber-500/30 hover:bg-amber-500/40">Serviço: <b className="text-white">{selectedServico.nome}</b></button>
+                  </div>
+
+                  <p className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300 bg-zinc-800 p-3 rounded-lg border border-zinc-700 w-max">
+                    📅 Qual dia você deseja agendar?
+                  </p>
+                  
+                  {/* Carrossel Horizontal de Datas */}
+                  <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
+                    {diasProximos.map((diaInfo) => (
+                      <button 
+                        key={diaInfo.iso} 
+                        onClick={() => calcularHorariosDisponiveis(diaInfo.iso)}
+                        className={`snap-start shrink-0 flex flex-col items-center justify-center h-20 w-16 rounded-xl border transition-all ${
+                          selectedData === diaInfo.iso 
+                            ? 'bg-amber-500 border-amber-400 text-zinc-950 shadow-[0_0_15px_rgba(245,158,11,0.3)]' 
+                            : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold tracking-wider">{diaInfo.mes}</span>
+                        <span className="text-xl font-black leading-none my-1">{diaInfo.dia}</span>
+                        <span className="text-[10px] font-medium">{diaInfo.semana}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Seleção de Horários (Aparece após escolher o dia) */}
+                  {selectedData && (
+                    <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      {horariosDisponiveis.length > 0 ? (
+                        <>
+                          <p className="mb-3 text-sm font-medium text-zinc-300">Selecione o horário:</p>
+                          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-6">
+                            {horariosDisponiveis.map(hora => (
+                              <button 
+                                key={hora} 
+                                onClick={() => setSelectedHorario(hora)}
+                                className={`py-2 rounded-lg text-sm font-bold border transition-all ${
+                                  selectedHorario === hora 
+                                    ? 'bg-emerald-500 border-emerald-400 text-zinc-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+                                    : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                                }`}
+                              >
+                                {hora}
+                              </button>
+                            ))}
+                          </div>
+                          <button onClick={handleAgendar} disabled={!selectedHorario} className="w-full rounded-xl bg-emerald-600 py-4 font-bold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Confirmar Agendamento
+                          </button>
+                        </>
+                      ) : (
+                        <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-4 text-center mt-2">
+                          <p className="text-sm font-medium text-red-400 mb-4">
+                            🕒 Esse profissional não possui mais horários disponíveis para esse serviço nesta data.
+                          </p>
+                          <div className="flex gap-2 justify-center">
+                            <button onClick={() => setSelectedData('')} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-zinc-950 hover:bg-amber-400 transition-colors">Tentar outra data</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {mensagem && <p className="mt-4 rounded-lg bg-emerald-950/50 border border-emerald-900/50 p-3 text-center text-sm font-medium text-emerald-400">{mensagem}</p>}
                 </div>
-              </form>
-
+              )}
             </div>
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <h2 className="mb-4 text-xl font-semibold text-white">Meus Agendamentos</h2>
               {agendamentos.length === 0 ? (
-                <p className="text-sm text-zinc-400">Nenhum agendamento encontrado.</p>
+                <p className="text-sm text-zinc-500">Nenhum agendamento encontrado.</p>
               ) : (
                 <div className="space-y-3">
                   {agendamentos.map((item) => (
-                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 gap-4">
+                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
-                        <p className="font-semibold text-white">{item.servicos?.nome}</p>
-                        <p className="text-xs text-zinc-400">Barbeiro: {item.barbeiros?.nome}</p>
-                        <p className="text-xs text-zinc-400">Data: {item.data.split('-').reverse().join('/')} às {item.horario?.slice(0, 5)}</p>
+                        <p className="font-bold text-white">{item.servicos?.nome}</p>
+                        <p className="text-sm text-zinc-400">Com: {item.barbeiros?.nome}</p>
+                        <div className="mt-2 flex items-center gap-2 text-xs font-medium text-amber-500">
+                          <span className="bg-amber-500/10 px-2 py-1 rounded">📅 {item.data.split('-').reverse().join('/')}</span>
+                          <span className="bg-amber-500/10 px-2 py-1 rounded">🕒 {item.horario?.slice(0, 5)}</span>
+                        </div>
                       </div>
-                      <span className={`self-start sm:self-center rounded px-2.5 py-1 text-xs font-medium border uppercase tracking-wider ${
-                        item.status === 'concluido' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
-                        item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
-                        'bg-blue-950 text-blue-400 border-blue-800'
+                      <span className={`self-start sm:self-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider border ${
+                        item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' :
+                        item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' :
+                        'bg-blue-950/50 text-blue-400 border-blue-900/50'
                       }`}>
                         {item.status}
                       </span>
-                      {['agendado', 'confirmado'].includes(item.status) && (
-                        <button onClick={() => cancelarAgendamento(item.id)} className="rounded border border-red-900/50 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/60">Cancelar</button>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -424,64 +432,37 @@ export default function DashboardPage() {
           </>
         )}
 
+        {/* ========================================================
+            VISÃO DO BARBEIRO (Mantida e Otimizada)
+        ======================================================== */}
         {usuario?.tipo === 'barbeiro' && (
           <>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
               <h2 className="mb-4 text-xl font-semibold text-emerald-400">Meu Expediente</h2>
               <form onSubmit={handleSalvarExpediente} className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Início do Expediente</label>
-                  <input type="time" value={horarioInicio} onChange={e => setHorarioInicio(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Fim do Expediente</label>
-                  <input type="time" value={horarioFim} onChange={e => setHorarioFim(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Dias de Atendimento</label>
-                  <input type="text" value={diasTrabalho} onChange={e => setDiasTrabalho(e.target.value)} placeholder="Ex: Segunda a Sábado" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
-                </div>
-                <div className="md:col-span-3 flex justify-end">
-                  <button type="submit" className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-700 transition-colors">
-                    Salvar Expediente
-                  </button>
-                </div>
+                <div><label className="mb-1 block text-xs font-medium text-zinc-300">Início</label><input type="time" value={horarioInicio} onChange={e => setHorarioInicio(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-zinc-300">Fim</label><input type="time" value={horarioFim} onChange={e => setHorarioFim(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-zinc-300">Dias de Trabalho</label><input type="text" value={diasTrabalho} onChange={e => setDiasTrabalho(e.target.value)} placeholder="Ex: Segunda a Sábado" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div className="md:col-span-3 flex justify-end"><button type="submit" className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-semibold text-white hover:bg-zinc-700">Salvar Expediente</button></div>
               </form>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-white">Minha Agenda</h2>
-              </div>
-              
-              {agendamentos.length === 0 ? (
-                <p className="text-sm text-zinc-400">Nenhum cliente agendado no momento.</p>
-              ) : (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
+              <h2 className="mb-6 text-xl font-semibold text-white">Minha Agenda</h2>
+              {agendamentos.length === 0 ? <p className="text-sm text-zinc-400">Nenhum cliente agendado.</p> : (
                 <div className="space-y-3">
                   {agendamentos.map((item) => (
-                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 gap-4">
+                    <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
-                        <p className="font-semibold text-white text-lg">{item.horario?.slice(0, 5)}</p>
-                        <p className="text-sm text-zinc-300"><span className="text-zinc-500">Cliente:</span> {item.clientes?.nome}</p>
-                        <p className="text-sm text-zinc-300"><span className="text-zinc-500">Serviço:</span> {item.servicos?.nome} ({item.servicos?.duracao} min)</p>
-                        <p className="text-xs text-emerald-500 mt-1">📱 {item.clientes?.telefone}</p>
+                        <p className="font-bold text-white text-xl">{item.horario?.slice(0, 5)}</p>
+                        <p className="text-sm text-zinc-300">{item.clientes?.nome} <span className="text-xs text-emerald-500 ml-2">📱 {item.clientes?.telefone}</span></p>
+                        <p className="text-xs text-zinc-500 mt-1">{item.servicos?.nome} ({item.servicos?.duracao} min)</p>
                       </div>
-                      
-                      <div className="flex flex-col items-end gap-2">
-                        <select
-                          value={item.status}
-                          onChange={(e) => atualizarStatus(item.id, e.target.value)}
-                          className={`rounded px-2.5 py-1 text-xs font-medium uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${
-                            item.status === 'concluido' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
-                            item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
-                            'bg-blue-950 text-blue-400 border-blue-800'
-                          }`}
-                        >
-                          <option value="agendado">Agendado</option>
-                          <option value="concluido">Concluído</option>
-                          <option value="cancelado">Cancelado</option>
+                      <div className="flex flex-col items-end justify-between">
+                        <select value={item.status} onChange={(e) => atualizarStatus(item.id, e.target.value)} className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' : item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' : 'bg-blue-950/50 text-blue-400 border-blue-900/50'}`}>
+                          <option value="agendado">Agendado</option><option value="concluído">Concluído</option><option value="cancelado">Cancelado</option>
                         </select>
-                        <p className="text-xs text-zinc-500">{item.data.split('-').reverse().join('/')}</p>
+                        <p className="text-xs text-zinc-500 mt-2 font-medium">{item.data.split('-').reverse().join('/')}</p>
                       </div>
                     </div>
                   ))}
@@ -489,63 +470,35 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg mt-6">
-              <h2 className="mb-4 text-xl font-semibold text-emerald-400">Gerenciar Serviços</h2>
-              
-              <form onSubmit={handleAdicionarServico} className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6 bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Nome do Serviço</label>
-                  <input type="text" value={novoServicoNome} onChange={e => setNovoServicoNome(e.target.value)} placeholder="Ex: Corte Degradê" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-zinc-300">Preço</label>
-                  <input 
-                    type="text" 
-                    value={novoServicoPrecoFormatado} 
-                    onChange={handlePrecoChange} 
-                    placeholder="R$ 0,00" 
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" 
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 label text-xs font-medium text-zinc-300">Duração (min)</label>
-                  <input type="number" min="1" max="480" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} placeholder="Ex: 30" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" />
-                </div>
-                <div className="md:col-span-4 flex justify-end">
-                  <button type="submit" className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 transition-colors">
-                    Adicionar Serviço
-                  </button>
-                </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
+              <h2 className="mb-4 text-xl font-semibold text-emerald-400">Cadastrar Serviço</h2>
+              <form onSubmit={handleAdicionarServico} className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6 bg-zinc-800/30 p-4 rounded-xl border border-zinc-800">
+                <div className="md:col-span-2"><label className="mb-1 block text-xs font-medium text-zinc-400">Nome</label><input type="text" value={novoServicoNome} onChange={e => setNovoServicoNome(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-zinc-400">Preço</label><input type="text" value={novoServicoPrecoFormatado} onChange={handlePrecoChange} placeholder="R$ 0,00" className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div><label className="mb-1 block text-xs font-medium text-zinc-400">Minutos</label><input type="number" min="1" value={novoServicoDuracao} onChange={e => setNovoServicoDuracao(e.target.value)} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-white focus:border-emerald-500 focus:outline-none text-sm" /></div>
+                <div className="md:col-span-4 flex justify-end"><button type="submit" className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Adicionar Serviço</button></div>
               </form>
-
-              {servicos.length === 0 ? (
-                <p className="text-sm text-zinc-400">Nenhum serviço cadastrado.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {servicos.map(servico => (
-                    <div key={servico.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 p-3">
-                      <div>
-                        <p className="font-semibold text-white text-sm">{servico.nome}</p>
-                        <p className="text-xs text-zinc-400">Duração: {servico.duracao} min</p>
-                        <p className="font-medium text-emerald-400 mt-1">
-                          R$ {Number(servico.preco).toFixed(2)}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleExcluirServico(servico.id)}
-                        className="rounded bg-red-950/60 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/60 border border-red-900/50 transition-colors self-center"
-                      >
-                        Excluir
-                      </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {servicos.map(servico => (
+                  <div key={servico.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-800/20 p-3">
+                    <div>
+                      <p className="font-semibold text-white text-sm">{servico.nome}</p>
+                      <p className="text-xs text-zinc-500">{servico.duracao} minutos</p>
+                      <p className="font-bold text-amber-500 mt-1">R$ {Number(servico.preco).toFixed(2)}</p>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <button onClick={() => handleExcluirServico(servico.id)} className="rounded-lg bg-red-950/40 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-900/60 border border-red-900/30">Excluir</button>
+                  </div>
+                ))}
+              </div>
             </div>
           </>
         )}
-
       </section>
+
+      <style jsx global>{`
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </main>
   );
 }
