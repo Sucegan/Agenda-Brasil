@@ -10,6 +10,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isConviteBarbeiro = searchParams.get('tipo') === 'barbeiro';
+  const conviteBarbeiro = searchParams.get('convite');
   
   const [isLogin, setIsLogin] = useState(!isConviteBarbeiro);
   const [email, setEmail] = useState('');
@@ -43,6 +44,7 @@ function LoginForm() {
       } else {
         if (!nome || !telefone) throw new Error('Preencha todos os campos.');
         if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
+        if (isConviteBarbeiro && !conviteBarbeiro) throw new Error('Este convite de barbeiro é inválido. Peça um novo link ao responsável.');
 
         // O Supabase Auth vai criar o usuário e a Trigger vai preencher a tabela usuarios sozinha
         const { error: authError } = await supabase.auth.signUp({
@@ -52,7 +54,8 @@ function LoginForm() {
             data: { 
               nome,
               telefone,
-              tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente'
+              tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente',
+              convite_barbeiro: conviteBarbeiro,
             } 
           }
         });

@@ -1,6 +1,7 @@
 export type AccountType = "cliente" | "barbeiro";
 export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado";
 export type BusinessDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type PublicBarber = Pick<Barber, "id" | "nome" | "horario_inicio" | "horario_fim" | "dias_trabalho">;
 
 type Relationship = {
   foreignKeyName: string;
@@ -66,7 +67,7 @@ export interface Database {
         Args: { p_barbeiro_id: number; p_servico_id: number; p_data: string; p_horario: string };
         Returns: Database["public"]["Tables"]["agendamentos"]["Row"];
       };
-      listar_horarios_disponiveis: {
+      buscar_horarios_disponiveis: {
         Args: { p_barbeiro_id: number; p_servico_id: number; p_data: string };
         Returns: { horario: string }[];
       };
@@ -77,6 +78,14 @@ export interface Database {
       cancelar_meu_agendamento: {
         Args: { p_agendamento_id: number };
         Returns: undefined;
+      };
+      listar_barbeiros_publicos: {
+        Args: Record<string, never>;
+        Returns: PublicBarber[];
+      };
+      criar_convite_barbeiro: {
+        Args: Record<string, never>;
+        Returns: string;
       };
     };
     Enums: Record<string, never>;

@@ -30,31 +30,41 @@ export function formatCurrency(value: number) {
 
 export function formatDate(date: string) {
   const [year, month, day] = date.split("-").map(Number);
-  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date(year, month - 1, day));
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
-export function localDateISO(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+function brazilDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return { year: Number(getPart("year")), month: Number(getPart("month")), day: Number(getPart("day")) };
+}
+
+export function brazilDateISO(date = new Date()) {
+  const { year, month, day } = brazilDateParts(date);
   return `${year}-${month}-${day}`;
 }
 
-export type DayChoice = { iso: string; day: number; month: string; weekday: string };
+export type DayChoice = { iso: string; day: number; month: string; weekday: string; businessDay: BusinessDay };
 
 export function upcomingDays(count: number, now = new Date()): DayChoice[] {
   const monthNames = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
   const weekdayNames = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
 
+  const initial = brazilDateParts(now);
+  const initialUtc = Date.UTC(initial.year, initial.month - 1, initial.day);
   return Array.from({ length: count }, (_, index) => {
-    const date = new Date(now);
-    date.setHours(12, 0, 0, 0);
-    date.setDate(date.getDate() + index);
+    const date = new Date(initialUtc + index * 86_400_000);
     return {
-      iso: localDateISO(date),
-      day: date.getDate(),
-      month: monthNames[date.getMonth()],
-      weekday: weekdayNames[date.getDay()],
+      iso: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`,
+      day: date.getUTCDate(),
+      month: monthNames[date.getUTCMonth()],
+      weekday: weekdayNames[date.getUTCDay()],
+      businessDay: date.getUTCDay() as BusinessDay,
     };
   });
 }

@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
-import type { Appointment, Barber, Service, UserProfile } from '@/lib/database.types';
+import { brazilDateISO, upcomingDays, type DayChoice } from '@/lib/scheduling';
+import type { Appointment, PublicBarber, Service, UserProfile } from '@/lib/database.types';
 import { 
   Wallet, Scissors, TrendingUp, Clock, CalendarDays, 
   LogOut, Plus, Trash2, CheckCircle2, MessageCircle, 
@@ -76,26 +77,17 @@ const StatusDropdown = ({ currentStatus, onChange }: { currentStatus: string, on
 export default function DashboardPage() {
   const [usuario, setUsuario] = useState<UserProfile | null>(null);
   const [barbeiroId, setBarbeiroId] = useState<number | null>(null);
-  const [barbeiros, setBarbeiros] = useState<Barber[]>([]);
+  const [barbeiros, setBarbeiros] = useState<PublicBarber[]>([]);
   const [servicos, setServicos] = useState<Service[]>([]);
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
 
   // Estados Cliente
-  const [selectedBarbeiro, setSelectedBarbeiro] = useState<Barber | null>(null);
+  const [selectedBarbeiro, setSelectedBarbeiro] = useState<PublicBarber | null>(null);
   const [selectedServico, setSelectedServico] = useState<Service | null>(null);
   const [selectedData, setSelectedData] = useState<string>('');
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
   const [selectedHorario, setSelectedHorario] = useState<string>('');
-  const [diasProximos] = useState<{ iso: string; dia: number; mes: string; semana: string }[]>(() => {
-    const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    return Array.from({ length: 15 }, (_, index) => {
-      const data = new Date();
-      data.setHours(12, 0, 0, 0);
-      data.setDate(data.getDate() + index);
-      return { iso: `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`, dia: data.getDate(), mes: meses[data.getMonth()], semana: diasSemana[data.getDay()] };
-    });
-  });
+  const [diasProximos] = useState<DayChoice[]>(() => upcomingDays(15));
   const [step, setStep] = useState<number>(1);
 
   // Estados Barbeiro
@@ -136,7 +128,7 @@ export default function DashboardPage() {
 
       if (userData.tipo === 'cliente') {
         const [{ data: barbeirosData, error: barbeirosError }, { data: servicosData, error: servicosError }] = await Promise.all([
-          supabase.from('barbeiros').select('*').order('nome'),
+          supabase.rpc('listar_barbeiros_publicos'),
           supabase.from('servicos').select('*').order('nome'),
         ]);
         if (barbeirosError || servicosError) throw barbeirosError || servicosError;
@@ -161,7 +153,7 @@ export default function DashboardPage() {
   const calcularHorariosDisponiveis = async (dataSelecionada: string) => {
     if (!selectedBarbeiro || !selectedServico) return;
     
-    const { data, error } = await supabase.rpc('listar_horarios_disponiveis', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: dataSelecionada });
+    const { data, error } = await supabase.rpc('buscar_horarios_disponiveis', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: dataSelecionada });
     if (error) return toast.error(error.message);
     setHorariosDisponiveis((data ?? []).map(({ horario }) => horario.slice(0, 5)));
     setSelectedData(dataSelecionada); setSelectedHorario('');
@@ -253,6 +245,7 @@ export default function DashboardPage() {
     toast.promise(
       async () => {
         const { error } = await supabase.from('servicos').delete().eq('id', servicoId);
+        if (error?.code === '23503') throw new Error('Este serviço possui agendamentos e não pode ser excluído.');
         if (error) throw error;
         if (barbeiroId) await carregarServicosBarbeiro(barbeiroId);
       },
@@ -260,10 +253,26 @@ export default function DashboardPage() {
     );
   };
 
-  const hoje = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  const criarConviteBarbeiro = async () => {
+    const { data: token, error } = await supabase.rpc('criar_convite_barbeiro');
+    if (error || !token) return toast.error(error?.message ?? 'Não foi possível gerar o convite.');
+    const link = `${window.location.origin}/?tipo=barbeiro&convite=${token}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success('Convite copiado. Ele expira em 7 dias e só pode ser usado uma vez.');
+    } catch {
+      toast.error('Não foi possível copiar o convite.');
+    }
+  };
+
+  const hoje = brazilDateISO();
   useEffect(() => {
     const timeout = window.setTimeout(() => { void carregarDados(); }, 0);
-    const subscription = supabase.channel('agenda-atualizada').on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => { void carregarDados(); }).subscribe();
+    const subscription = supabase
+      .channel('agenda-atualizada')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => { void carregarDados(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos' }, () => { void carregarDados(); })
+      .subscribe();
     return () => { window.clearTimeout(timeout); void supabase.removeChannel(subscription); };
     // The initial load and subscription are deliberately registered once per mounted dashboard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -349,10 +358,10 @@ export default function DashboardPage() {
                     
                     <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
                       {diasProximos.map((d) => (
-                        <button key={d.iso} onClick={() => calcularHorariosDisponiveis(d.iso)} className={`snap-start shrink-0 flex flex-col items-center justify-center h-20 w-16 rounded-xl border transition-all ${selectedData === d.iso ? 'bg-amber-500 border-amber-400 text-zinc-950 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'}`}>
-                          <span className="text-[10px] font-bold tracking-wider">{d.mes}</span>
-                          <span className="text-xl font-black my-1">{d.dia}</span>
-                          <span className="text-[10px] font-medium">{d.semana}</span>
+                        <button key={d.iso} disabled={!selectedBarbeiro?.dias_trabalho.includes(d.businessDay)} onClick={() => calcularHorariosDisponiveis(d.iso)} className={`snap-start shrink-0 flex flex-col items-center justify-center h-20 w-16 rounded-xl border transition-all disabled:cursor-not-allowed disabled:opacity-35 ${selectedData === d.iso ? 'bg-amber-500 border-amber-400 text-zinc-950 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'}`}>
+                          <span className="text-[10px] font-bold tracking-wider">{d.month}</span>
+                          <span className="text-xl font-black my-1">{d.day}</span>
+                          <span className="text-[10px] font-medium">{d.weekday}</span>
                         </button>
                       ))}
                     </div>
@@ -422,15 +431,11 @@ export default function DashboardPage() {
                 <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20"><UserPlus size={24} /></div>
                 <div>
                   <p className="font-bold text-white text-base">Convidar Novo Barbeiro</p>
-                  <p className="text-xs text-zinc-400">Gere e copie um link de convite exclusivo para sua equipe.</p>
+                  <p className="text-xs text-zinc-400">Gere um link individual, válido por 7 dias e para um único cadastro.</p>
                 </div>
               </div>
               <button 
-                onClick={() => {
-                  const link = `${window.location.origin}/?tipo=barbeiro`;
-                  navigator.clipboard.writeText(link);
-                  toast.success('Link de convite copiado para a área de transferência!');
-                }}
+                onClick={() => { void criarConviteBarbeiro(); }}
                 className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-lg shadow-emerald-950"
               >
                 <Copy size={16} /> Copiar Link de Convite
