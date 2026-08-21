@@ -5,9 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 
-// ==========================================
-// COMPONENTE: SKELETON DE CARREGAMENTO
-// ==========================================
 const DashboardSkeleton = () => (
   <main className="min-h-screen bg-zinc-950 p-6 flex flex-col gap-6 animate-pulse w-full items-center">
     <div className="h-16 bg-zinc-900 rounded-lg max-w-4xl w-full border border-zinc-800"></div>
@@ -24,7 +21,6 @@ export default function DashboardPage() {
   const [servicos, setServicos] = useState<any[]>([]);
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
 
-  // Estados do Fluxo de Agendamento (Cliente)
   const [selectedBarbeiro, setSelectedBarbeiro] = useState<any>(null);
   const [selectedServico, setSelectedServico] = useState<any>(null);
   const [selectedData, setSelectedData] = useState<string>('');
@@ -33,7 +29,6 @@ export default function DashboardPage() {
   const [diasProximos, setDiasProximos] = useState<any[]>([]);
   const [step, setStep] = useState<number>(1);
 
-  // Estados do Barbeiro
   const [novoServicoNome, setNovoServicoNome] = useState('');
   const [novoServicoPrecoFormatado, setNovoServicoPrecoFormatado] = useState('');
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
@@ -117,14 +112,10 @@ export default function DashboardPage() {
   };
 
   const carregarAgendamentosBarbeiro = async (bId: number) => {
-    // Agora puxamos o PREÇO também para calcular o Faturamento
     const { data } = await supabase.from('agendamentos').select(`id, data, horario, status, clientes(nome, telefone), servicos(nome, duracao, preco)`).eq('barbeiro_id', bId).order('data', { ascending: true }).order('horario', { ascending: true });
     if (data) setAgendamentos(data);
   };
 
-  // ==========================================
-  // MOTOR INTELIGENTE (AGORA COM HORÁRIO DE ALMOÇO)
-  // ==========================================
   const calcularHorariosDisponiveis = async (dataSelecionada: string) => {
     if (!selectedBarbeiro || !selectedServico) return;
     
@@ -166,18 +157,10 @@ export default function DashboardPage() {
     const horaAtualMinutos = agora.getHours() * 60 + agora.getMinutes();
 
     for (let tempoAtual = inicioExp; (tempoAtual + duracaoServico) <= fimExp; tempoAtual += 30) {
-      
-      // BLOQUEIO DO PASSADO
       if (dataSelecionada === dataHojeISO && tempoAtual <= horaAtualMinutos) continue;
-
       const fimDoSlot = tempoAtual + duracaoServico;
-      
-      // BLOQUEIO DE ALMOÇO
       if (tempoAtual < fAlmoco && fimDoSlot > iniAlmoco) continue;
-
-      // BLOQUEIO DE CONFLITO COM OUTROS AGENDAMENTOS
       const temConflito = bloqueios.some((b: any) => (tempoAtual < b.fim && fimDoSlot > b.inicio));
-
       if (!temConflito) {
         horariosValidos.push(converterParaHora(tempoAtual));
       }
@@ -186,6 +169,16 @@ export default function DashboardPage() {
     setHorariosDisponiveis(horariosValidos);
     setSelectedData(dataSelecionada);
     setSelectedHorario('');
+  };
+
+  const handleSelectBarbeiro = (barbeiro: any) => {
+    setSelectedBarbeiro(barbeiro);
+    setStep(2);
+  };
+
+  const handleSelectServico = (servico: any) => {
+    setSelectedServico(servico);
+    setStep(3);
   };
 
   const handleAgendar = async () => {
@@ -224,9 +217,6 @@ export default function DashboardPage() {
 
   const formatarZap = (numero: string) => `https://wa.me/55${numero.replace(/\D/g, '')}`;
 
-  // ==========================================
-  // LÓGICAS DO BARBEIRO
-  // ==========================================
   const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(/\D/g, '');
     if (!valor) return setNovoServicoPrecoFormatado('');
@@ -277,31 +267,24 @@ export default function DashboardPage() {
     router.push('/');
   };
 
-  // ==========================================
-  // MÉTRICAS FINANCEIRAS DO BARBEIRO
-  // ==========================================
   const agora = new Date();
   const hoje = new Date(agora.getTime() - (agora.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-  
-  const agendamentosHoje = agendamentos.filter(a => a.data === hoje);
-  const faturamentoHoje = agendamentosHoje.filter(a => a.status === 'concluído').reduce((acc, curr) => {
+  const agendamentosHoje = agendamentos.filter((a: any) => a.data === hoje);
+  const faturamentoHoje = agendamentosHoje.filter((a: any) => a.status === 'concluído').reduce((acc: number, curr: any) => {
     const preco = Array.isArray(curr.servicos) ? curr.servicos[0]?.preco : curr.servicos?.preco;
     return acc + (Number(preco) || 0);
   }, 0);
   
-  const cortesHoje = agendamentosHoje.filter(a => a.status === 'concluído').length;
-  
-  const agendamentosFuturos = agendamentos.filter(a => a.data >= hoje && a.status !== 'cancelado');
-  const previsaoSemana = agendamentosFuturos.reduce((acc, curr) => {
+  const cortesHoje = agendamentosHoje.filter((a: any) => a.status === 'concluído').length;
+  const agendamentosFuturos = agendamentos.filter((a: any) => a.data >= hoje && a.status !== 'cancelado');
+  const previsaoSemana = agendamentosFuturos.reduce((acc: number, curr: any) => {
     const preco = Array.isArray(curr.servicos) ? curr.servicos[0]?.preco : curr.servicos?.preco;
     return acc + (Number(preco) || 0);
   }, 0);
 
-
-  // Renderização do Loading Skeleton
   if (loading) return <DashboardSkeleton />;
 
-  const servicosDoBarbeiroSelecionado = servicos.filter((s) => s.barbeiro_id === selectedBarbeiro?.id);
+  const servicosDoBarbeiroSelecionado = servicos.filter((s: any) => s.barbeiro_id === selectedBarbeiro?.id);
 
   return (
     <main className="min-h-screen bg-zinc-950 p-6 text-white font-sans relative pb-20">
@@ -319,9 +302,6 @@ export default function DashboardPage() {
 
       <section className="mx-auto mt-8 max-w-4xl space-y-6">
         
-        {/* ==========================================
-            ÁREA DO CLIENTE
-        ========================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl relative overflow-hidden">
@@ -336,9 +316,9 @@ export default function DashboardPage() {
                 <div className="animate-in fade-in duration-300">
                   <p className="mb-4 text-sm font-medium text-zinc-300">Selecione o profissional:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {barbeiros.map(barbeiro => (
+                    {barbeiros.map((barbeiro: any) => (
                       <button key={barbeiro.id} onClick={() => handleSelectBarbeiro(barbeiro)} className="flex items-center gap-4 p-4 rounded-xl border border-zinc-700 bg-zinc-800 hover:border-emerald-500 hover:bg-zinc-800/80 transition-all text-left group">
-                        <div className="h-12 w-12 rounded-full bg-zinc-700 flex items-center justify-center text-xl font-bold text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-900 transition-colors">{barbeiro.nome.charAt(0).toUpperCase()}</div>
+                        <div className="h-12 w-12 rounded-full bg-zinc-700 flex items-center justify-center text-xl font-bold text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-900 transition-colors">{barbeiro.nome?.charAt(0).toUpperCase()}</div>
                         <div>
                           <p className="font-semibold text-white">{barbeiro.nome}</p>
                           <p className="text-xs text-zinc-400">{barbeiro.dias_trabalho}</p>
@@ -351,10 +331,10 @@ export default function DashboardPage() {
 
               {step === 2 && (
                 <div className="animate-in fade-in duration-300">
-                  <div className="mb-6 flex gap-2 overflow-x-auto pb-2"><span className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700">Profissional: <b className="text-white">{selectedBarbeiro.nome}</b></span></div>
+                  <div className="mb-6 flex gap-2 overflow-x-auto pb-2"><span className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700">Profissional: <b className="text-white">{selectedBarbeiro?.nome}</b></span></div>
                   <p className="mb-4 text-sm font-medium text-zinc-300">Selecione um de nossos serviços 👇</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {servicosDoBarbeiroSelecionado.map((servico) => (
+                    {servicosDoBarbeiroSelecionado.map((servico: any) => (
                       <button key={servico.id} onClick={() => handleSelectServico(servico)} className="flex flex-col items-center justify-center p-4 rounded-xl border border-amber-600/30 bg-amber-500/10 hover:bg-amber-500 hover:text-zinc-950 transition-all text-center group text-amber-500">
                         <span className="font-semibold text-sm group-hover:text-zinc-950">{servico.nome}</span>
                         <span className="font-bold mt-1 group-hover:text-zinc-900">R$ {Number(servico.preco).toFixed(2)}</span>
@@ -368,13 +348,13 @@ export default function DashboardPage() {
               {step === 3 && (
                 <div className="animate-in fade-in duration-300">
                   <div className="mb-6 flex gap-2 flex-wrap pb-2">
-                    <button onClick={() => setStep(1)} className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700 hover:text-white">Profissional: <b className="text-white">{selectedBarbeiro.nome}</b></button>
-                    <button onClick={() => setStep(2)} className="shrink-0 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-500 border border-amber-500/30 hover:bg-amber-500/40">Serviço: <b className="text-white">{selectedServico.nome}</b></button>
+                    <button onClick={() => setStep(1)} className="shrink-0 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400 border border-zinc-700 hover:text-white">Profissional: <b className="text-white">{selectedBarbeiro?.nome}</b></button>
+                    <button onClick={() => setStep(2)} className="shrink-0 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-500 border border-amber-500/30 hover:bg-amber-500/40">Serviço: <b className="text-white">{selectedServico?.nome}</b></button>
                   </div>
                   <p className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300 bg-zinc-800 p-3 rounded-lg border border-zinc-700 w-max">📅 Qual dia você deseja agendar?</p>
                   
                   <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
-                    {diasProximos.map((diaInfo) => (
+                    {diasProximos.map((diaInfo: any) => (
                       <button key={diaInfo.iso} onClick={() => calcularHorariosDisponiveis(diaInfo.iso)} className={`snap-start shrink-0 flex flex-col items-center justify-center h-20 w-16 rounded-xl border transition-all ${selectedData === diaInfo.iso ? 'bg-amber-500 border-amber-400 text-zinc-950 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'}`}>
                         <span className="text-[10px] font-bold tracking-wider">{diaInfo.mes}</span>
                         <span className="text-xl font-black leading-none my-1">{diaInfo.dia}</span>
@@ -389,7 +369,7 @@ export default function DashboardPage() {
                         <>
                           <p className="mb-3 text-sm font-medium text-zinc-300">Selecione o horário:</p>
                           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-6">
-                            {horariosDisponiveis.map(hora => (
+                            {horariosDisponiveis.map((hora: string) => (
                               <button key={hora} onClick={() => setSelectedHorario(hora)} className={`py-2 rounded-lg text-sm font-bold border transition-all ${selectedHorario === hora ? 'bg-emerald-500 border-emerald-400 text-zinc-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'}`}>{hora}</button>
                             ))}
                           </div>
@@ -408,7 +388,7 @@ export default function DashboardPage() {
               <h2 className="mb-4 text-xl font-semibold text-white">Meus Agendamentos</h2>
               {agendamentos.length === 0 ? <p className="text-sm text-zinc-500">Nenhum agendamento encontrado.</p> : (
                 <div className="space-y-3">
-                  {agendamentos.map((item) => (
+                  {agendamentos.map((item: any) => (
                     <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
                         <p className="font-bold text-white">{item.servicos?.nome}</p>
@@ -432,12 +412,8 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ==========================================
-            ÁREA DO BARBEIRO
-        ========================================== */}
         {usuario?.tipo === 'barbeiro' && (
           <>
-            {/* Dashboard Financeiro */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg relative overflow-hidden">
                  <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl">💰</div>
@@ -471,7 +447,7 @@ export default function DashboardPage() {
               <h2 className="mb-6 text-xl font-semibold text-white">Minha Agenda</h2>
               {agendamentos.length === 0 ? <p className="text-sm text-zinc-400">Nenhum cliente agendado.</p> : (
                 <div className="space-y-3">
-                  {agendamentos.map((item) => (
+                  {agendamentos.map((item: any) => (
                     <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
                         <div className="flex items-center gap-3">
@@ -504,7 +480,7 @@ export default function DashboardPage() {
                 <div className="md:col-span-4 flex justify-end"><button type="submit" className="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Adicionar Serviço</button></div>
               </form>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {servicos.map(servico => (
+                {servicos.map((servico: any) => (
                   <div key={servico.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-800/20 p-3">
                     <div>
                       <p className="font-semibold text-white text-sm">{servico.nome}</p>
