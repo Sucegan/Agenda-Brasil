@@ -1,18 +1,31 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useSyncExternalStore, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
 
+const subscribeToNothing = () => () => undefined;
+
+function useInviteParams() {
+  const search = useSyncExternalStore(
+    subscribeToNothing,
+    () => window.location.search,
+    () => '',
+  );
+  const params = new URLSearchParams(search);
+  return {
+    isConviteBarbeiro: params.get('tipo') === 'barbeiro',
+    conviteBarbeiro: params.get('convite'),
+  };
+}
+
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const isConviteBarbeiro = searchParams.get('tipo') === 'barbeiro';
-  const conviteBarbeiro = searchParams.get('convite');
-  
-  const [isLogin, setIsLogin] = useState(!isConviteBarbeiro);
+  const { isConviteBarbeiro, conviteBarbeiro } = useInviteParams();
+  const [preferirLogin, setPreferirLogin] = useState(true);
+  const isLogin = !isConviteBarbeiro && preferirLogin;
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [nome, setNome] = useState('');
@@ -172,7 +185,7 @@ function LoginForm() {
 
       {!isConviteBarbeiro && (
         <div className="mt-6 text-center">
-          <button onClick={() => { setIsLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+          <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>
           </button>
@@ -188,9 +201,7 @@ export default function LoginPage() {
       <Toaster position="top-center" toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
       
-      <Suspense fallback={<div className="text-zinc-500 text-sm">Carregando...</div>}>
-        <LoginForm />
-      </Suspense>
+      <LoginForm />
     </main>
   );
 }
