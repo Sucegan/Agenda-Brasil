@@ -15,6 +15,7 @@ export const appointmentStatusLabels: Record<AppointmentStatus, string> = {
   confirmado: "Confirmado",
   concluido: "Concluído",
   cancelado: "Cancelado",
+  nao_compareceu: "Não compareceu",
 };
 
 export function formatWorkDays(days: BusinessDay[]) {
@@ -46,7 +47,7 @@ function brazilDateParts(date: Date) {
 
 export function brazilDateISO(date = new Date()) {
   const { year, month, day } = brazilDateParts(date);
-  return `${year}-${month}-${day}`;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export type DayChoice = { iso: string; day: number; month: string; weekday: string; businessDay: BusinessDay };

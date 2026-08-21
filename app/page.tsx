@@ -54,6 +54,8 @@ function LoginForm() {
             data: { 
               nome,
               telefone,
+              full_name: nome,
+              display_name: nome,
               tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente',
               convite_barbeiro: conviteBarbeiro,
             } 
@@ -77,6 +79,23 @@ function LoginForm() {
     } finally { 
       setLoading(false); 
     }
+  };
+
+  const solicitarRecuperacaoSenha = async () => {
+    if (!email) {
+      toast.error('Informe seu e-mail para receber o link de recuperação.');
+      return;
+    }
+
+    const toastId = toast.loading('Enviando link de recuperação...');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/redefinir-senha`,
+    });
+    if (error) {
+      toast.error('Não foi possível enviar o link. Verifique o e-mail informado.', { id: toastId });
+      return;
+    }
+    toast.success('Enviamos um link para você criar uma nova senha.', { id: toastId });
   };
 
   return (
@@ -139,6 +158,12 @@ function LoginForm() {
         <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20">
           {loading ? 'Aguarde...' : isLogin ? 'Entrar' : 'Cadastrar'}
         </button>
+
+        {isLogin && (
+          <button type="button" onClick={() => { void solicitarRecuperacaoSenha(); }} className="w-full text-center text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
+            Esqueci minha senha
+          </button>
+        )}
       </form>
 
       {!isConviteBarbeiro && (

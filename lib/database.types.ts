@@ -1,5 +1,5 @@
 export type AccountType = "cliente" | "barbeiro";
-export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado";
+export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado" | "nao_compareceu";
 export type BusinessDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type PublicBarber = Pick<Barber, "id" | "nome" | "horario_inicio" | "horario_fim" | "dias_trabalho">;
 
@@ -19,6 +19,24 @@ export interface Database {
         Insert: { id: string; nome: string; telefone?: string | null; tipo: AccountType; created_at?: string };
         Update: { nome?: string; telefone?: string | null; tipo?: AccountType };
         Relationships: [];
+      };
+      configuracoes_negocio: {
+        Row: { id: true; nome: string; endereco: string | null; telefone: string | null; logo_url: string | null; updated_at: string };
+        Insert: { id?: true; nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null };
+        Update: { nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+      feriados_negocio: {
+        Row: { data: string; descricao: string; criado_por: string; created_at: string };
+        Insert: { data: string; descricao: string; criado_por: string };
+        Update: { data?: string; descricao?: string };
+        Relationships: [Relationship];
+      };
+      bloqueios_agenda: {
+        Row: { id: number; barbeiro_id: number; data_inicio: string; data_fim: string; hora_inicio: string | null; hora_fim: string | null; tipo: "pausa" | "folga" | "ferias"; motivo: string; created_at: string };
+        Insert: { id?: never; barbeiro_id: number; data_inicio: string; data_fim: string; hora_inicio?: string | null; hora_fim?: string | null; tipo?: "pausa" | "folga" | "ferias"; motivo?: string };
+        Update: { data_inicio?: string; data_fim?: string; hora_inicio?: string | null; hora_fim?: string | null; tipo?: "pausa" | "folga" | "ferias"; motivo?: string };
+        Relationships: [Relationship];
       };
       barbeiros: {
         Row: { id: number; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; dias_trabalho: BusinessDay[] };
@@ -87,6 +105,18 @@ export interface Database {
         Args: Record<string, never>;
         Returns: string;
       };
+      atualizar_meu_perfil: {
+        Args: { p_nome: string; p_telefone: string };
+        Returns: Database["public"]["Tables"]["usuarios"]["Row"];
+      };
+      confirmar_meu_agendamento: {
+        Args: { p_agendamento_id: number };
+        Returns: undefined;
+      };
+      criar_bloqueio_agenda: {
+        Args: { p_data_inicio: string; p_data_fim: string; p_hora_inicio: string | null; p_hora_fim: string | null; p_tipo: "pausa" | "folga" | "ferias"; p_motivo: string };
+        Returns: Database["public"]["Tables"]["bloqueios_agenda"]["Row"];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -97,3 +127,6 @@ export type UserProfile = Database["public"]["Tables"]["usuarios"]["Row"];
 export type Barber = Database["public"]["Tables"]["barbeiros"]["Row"];
 export type Service = Database["public"]["Tables"]["servicos"]["Row"];
 export type Appointment = Database["public"]["Tables"]["agendamentos"]["Row"];
+export type BusinessSettings = Database["public"]["Tables"]["configuracoes_negocio"]["Row"];
+export type BusinessHoliday = Database["public"]["Tables"]["feriados_negocio"]["Row"];
+export type ScheduleBlock = Database["public"]["Tables"]["bloqueios_agenda"]["Row"];
