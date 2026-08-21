@@ -1,242 +1,242 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import toast, { Toaster } from 'react-hot-toast';
+import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors } from 'lucide-react';
 
-export default function Home() {
-  const [isSignUp, setIsSignUp] = useState(false);
+export default function LoginPage() {
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [senha, setSenha] = useState('');
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
-  const [tipo, setTipo] = useState<'cliente' | 'barbeiro'>('cliente');
-  const [mensagem, setMensagem] = useState('');
+  const [tipoConta, setTipoConta] = useState('cliente');
   const [loading, setLoading] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    // The database trigger creates the profile atomically with the Auth user.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        router.replace('/dashboard');
-      }
-    });
-
-    // Também checa assim que a página carrega (caso já esteja logado)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/dashboard');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [router]);
-
-  // Função para formatar o telefone automaticamente enquanto digita
+  // Máscara automática para o telefone: (XX) XXXXX-XXXX
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, ''); 
-
-    if (valor.length > 11) valor = valor.slice(0, 11); 
-
-    if (valor.length > 10) {
-      valor = valor.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3');
-    } else if (valor.length > 6) {
-      valor = valor.replace(/^(\d{2})(\d{4})(\d{0,4})$/, '($1) $2-$3');
-    } else if (valor.length > 2) {
-      valor = valor.replace(/^(\d{2})(\d{0,5})$/, '($1) $2');
-    } else if (valor.length > 0) {
-      valor = valor.replace(/^(\d*)/, '($1');
+    let value = e.target.value.replace(/\D/g, ''); // Remove tudo que não é número
+    if (value.length <= 11) {
+      value = value.replace(/^(\d{2})(\d)/g, '($1) $2');
+      value = value.replace(/(\d)(\d{4})$/, '$1-$2');
     }
-
-    setTelefone(valor);
+    setTelefone(value);
   };
 
-  const traduzirErro = (mensagemIngles: string) => {
-    const msg = mensagemIngles.toLowerCase();
-
-    if (msg.includes('rate limit') || msg.includes('over_email_send_rate_limit')) {
-      return 'Muitas tentativas em pouco tempo. Por favor, aguarde alguns instantes e tente novamente.';
-    }
-    if (msg.includes('invalid login credentials')) {
-      return 'E-mail ou senha incorretos.';
-    }
-    if (msg.includes('user already registered')) {
-      return 'Este e-mail já está cadastrado em nosso sistema.';
-    }
-    if (msg.includes('password should be at least')) {
-      return 'A senha deve ter pelo menos 6 caracteres.';
-    }
-    return 'Ocorreu um erro ao processar sua solicitação. Tente novamente em instantes.';
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMensagem('');
+    const toastId = toast.loading('Aguarde...');
 
-    const numerosApenas = telefone.replace(/\D/g, '');
-    if (isSignUp && (numerosApenas.length < 10 || numerosApenas.length > 11)) {
-      setMensagem('Por favor, insira um número de telefone com DDD válido.');
-      setLoading(false);
-      return;
-    }
+    try {
+      if (isLogin) {
+        // ================= LOGIN =================
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password: senha,
+        });
 
-    if (isSignUp) {
-      // 1. Criar usuário e guardar os dados em "options.data"
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            nome,
-            telefone,
-            tipo
+        if (error) throw new Error('E-mail ou senha incorretos.');
+        
+        toast.success('Login realizado com sucesso!', { id: toastId });
+        router.push('/dashboard');
+        
+      } else {
+        // ================= CADASTRO (ATUALIZADO) =================
+        if (!nome || !telefone) throw new Error('Preencha todos os campos.');
+        if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
+
+        // O segredo está aqui no options.data para preencher o painel do Supabase!
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password: senha,
+          options: {
+            data: {
+              display_name: nome, // Vai para a coluna Display Name
+              full_name: nome,    // Garantia extra
+              phone: telefone,    // Vai para os metadados do usuário
+            }
           }
+        });
+
+        if (authError) throw new Error(authError.message);
+
+        // Se a conta for criada no Auth, nós salvamos na NOSSA tabela pública "usuarios"
+        if (authData.user) {
+          const { error: dbError } = await supabase.from('usuarios').insert([
+            {
+              id: authData.user.id,
+              nome,
+              telefone,
+              tipo: tipoConta,
+            },
+          ]);
+
+          if (dbError) throw new Error('Erro ao salvar perfil no banco de dados.');
+          
+          toast.success('Conta criada com sucesso!', { id: toastId });
+          router.push('/dashboard');
         }
-      });
-
-      if (signUpError) {
-        setMensagem(traduzirErro(signUpError.message));
-        setLoading(false);
-        return;
       }
-
-      // Mensagem de sucesso
-      setMensagem('✅ Conta criada! Verifique sua caixa de entrada (e o Spam) e clique no link para ativar seu acesso.');
-      
-      // Reseta os campos para o usuário focar apenas na mensagem
-      setEmail('');
-      setPassword('');
-      setNome('');
-      setTelefone('');
-      setIsSignUp(false); 
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId });
+    } finally {
       setLoading(false);
-
-    } else {
-      // 2. Lógica de login
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setMensagem(traduzirErro(error.message));
-        setLoading(false);
-      }
-      // O redirect para o dashboard não fica mais aqui! O useEffect lá em cima fará a mágica ao detectar o SIGNED_IN.
     }
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-white">
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-        <h1 className="mb-2 text-center text-3xl font-bold tracking-tight">Agenda Brasil</h1>
-        <p className="mb-6 text-center text-sm text-zinc-400">
-          {isSignUp ? 'Crie sua conta para agendar ou gerenciar' : 'Acesse sua conta para continuar'}
-        </p>
+    <main className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 relative selection:bg-emerald-500/30">
+      <Toaster position="top-center" toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
+      
+      {/* Efeito de brilho no fundo */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none"></div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          {isSignUp && (
-            <>
-              <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">Nome Completo</label>
-                <input
-                  type="text"
-                  minLength={2}
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="Digite seu nome completo"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">
-                  Telefone / WhatsApp
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={telefone}
-                  onChange={handleTelefoneChange}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="(11) 99999-9999"
-                />
-                <span className="mt-1 block text-xs text-zinc-500">
-                  Usado para receber lembretes e avisos do agendamento.
-                </span>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Tipo de Conta</label>
-                <select
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as 'cliente' | 'barbeiro')}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-                >
-                  <option value="cliente">Cliente (Quero agendar horários)</option>
-                  <option value="barbeiro">Barbeiro / Barbearia</option>
-                </select>
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">E-mail</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-              placeholder="seuemail@exemplo.com"
-            />
+      <div className="w-full max-w-md z-10">
+        
+        {/* LOGO E TÍTULO */}
+        <div className="text-center mb-8">
+          <div className="mx-auto w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-xl">
+            <Scissors className="text-emerald-400" size={32} />
           </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-300">Senha</label>
-            <input
-                  type="password"
-              minLength={8}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
-              placeholder="••••••••"
-            />
-            {isSignUp && <span className="mt-1 block text-xs text-zinc-500">Use ao menos 8 caracteres.</span>}
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Carregando...' : isSignUp ? 'Cadastrar' : 'Entrar'}
-          </button>
-        </form>
-
-        {mensagem && (
-          <p className="mt-4 rounded border border-zinc-700 bg-zinc-800/50 p-3 text-center text-sm text-zinc-200">
-            {mensagem}
+          <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">
+            Agenda Brasil
+          </h1>
+          <p className="text-zinc-400 mt-2 text-sm font-medium">
+            {isLogin ? 'Acesse sua conta para continuar' : 'Crie sua conta para agendar ou gerenciar'}
           </p>
-        )}
+        </div>
 
-        <div className="mt-6 text-center text-sm">
-          <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setMensagem('');
-            }}
-            className="text-emerald-400 hover:underline"
-          >
-            {isSignUp ? 'Já tem uma conta? Faça login' : 'Não tem conta? Cadastre-se'}
-          </button>
+        {/* CARTÃO DO FORMULÁRIO */}
+        <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 p-8 rounded-3xl shadow-2xl">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            
+            {/* CAMPOS DE CADASTRO (Só aparecem se não for login) */}
+            {!isLogin && (
+              <div className="animate-in fade-in slide-in-from-top-4 duration-300 space-y-4">
+                <div className="relative">
+                  <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500"><User size={18} /></div>
+                    <input 
+                      type="text" 
+                      id="nome"
+                      name="nome"
+                      autoComplete="name" 
+                      value={nome} 
+                      onChange={(e) => setNome(e.target.value)} 
+                      placeholder="Ex: João da Silva"
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" 
+                    />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">WhatsApp</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500"><Phone size={18} /></div>
+                    <input 
+                      type="tel" 
+                      id="telefone"
+                      name="telefone"
+                      autoComplete="tel" 
+                      value={telefone} 
+                      onChange={handleTelefoneChange} 
+                      placeholder="(00) 00000-0000"
+                      maxLength={15}
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" 
+                    />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Conta</label>
+                  <select 
+                    value={tipoConta} 
+                    onChange={(e) => setTipoConta(e.target.value)} 
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 p-3 text-white outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="cliente">👤 Sou Cliente (Quero agendar)</option>
+                    <option value="barbeiro">✂️ Sou Barbeiro (Quero gerenciar)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* CAMPOS PADRÃO (Email e Senha) */}
+            <div className="relative">
+              <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">E-mail</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500"><Mail size={18} /></div>
+                <input 
+                  type="email" 
+                  id="email"
+                  name="email"
+                  autoComplete="email" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  placeholder="seu@email.com"
+                  required
+                  className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" 
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Senha</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500"><Lock size={18} /></div>
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  id="senha"
+                  name="senha"
+                  autoComplete={isLogin ? "current-password" : "new-password"} 
+                  value={senha} 
+                  onChange={(e) => setSenha(e.target.value)} 
+                  placeholder="••••••••"
+                  required
+                  className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 pr-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" 
+                />
+                {/* BOTÃO OLHINHO */}
+                <button 
+                  type="button" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20"
+            >
+              {loading ? 'Aguarde...' : isLogin ? 'Entrar' : 'Cadastrar'}
+            </button>
+          </form>
+
+          {/* TROCAR ENTRE LOGIN E CADASTRO */}
+          <div className="mt-6 text-center">
+            <button 
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setEmail(''); setSenha(''); setNome(''); setTelefone(''); // Limpa form ao alternar
+              }} 
+              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+            >
+              {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
+              <span className="text-emerald-400 font-bold hover:underline">
+                {isLogin ? 'Cadastre-se' : 'Faça Login'}
+              </span>
+            </button>
+          </div>
+          
         </div>
       </div>
     </main>
