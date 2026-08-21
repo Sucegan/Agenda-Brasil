@@ -1,16 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
+type TipoUsuario = 'cliente' | 'barbeiro';
+type Usuario = { id: string; nome: string; telefone: string | null; tipo: TipoUsuario };
+type Barbeiro = { id: number; nome: string; horario_inicio: string; horario_fim: string; dias_trabalho: number[] };
+type Servico = { id: number; nome: string; preco: number | string; duracao: number; barbeiro_id: number };
+type Agendamento = { id: number; data: string; horario: string; status: string; barbeiros?: { nome: string } | null; clientes?: { nome: string; telefone: string } | null; servicos?: { nome: string; preco?: number | string; duracao?: number } | null };
+
 export default function DashboardPage() {
-  const [usuario, setUsuario] = useState<any>(null);
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [barbeiroId, setBarbeiroId] = useState<number | null>(null);
-  const [barbeiros, setBarbeiros] = useState<any[]>([]);
-  const [servicos, setServicos] = useState<any[]>([]);
-  const [agendamentos, setAgendamentos] = useState<any[]>([]);
+  const [barbeiros, setBarbeiros] = useState<Barbeiro[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
 
   // Formulário de Agendamento (Visão Cliente)
   const [selectedBarbeiro, setSelectedBarbeiro] = useState('');
@@ -26,19 +34,20 @@ export default function DashboardPage() {
   // Configurações de Expediente do Barbeiro
   const [horarioInicio, setHorarioInicio] = useState('08:00');
   const [horarioFim, setHorarioFim] = useState('18:00');
-  const [diasTrabalho, setDiasTrabalho] = useState('Segunda a Sábado');
+  const [diasTrabalho, setDiasTrabalho] = useState('1,2,3,4,5,6');
 
   const [loading, setLoading] = useState(true);
   const [mensagem, setMensagem] = useState('');
   const router = useRouter();
 
   const dataHoje = new Date().toISOString().split('T')[0];
+  const formatarDias = (dias: number[] | string | null) => {
+    if (!Array.isArray(dias)) return dias || 'Não informado';
+    const nomes = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    return dias.map((dia) => nomes[dia]).join(', ');
+  };
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  const carregarDados = async () => {
+  const carregarDados = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push('/');
@@ -55,31 +64,11 @@ export default function DashboardPage() {
 
     if (userData?.tipo === 'cliente') {
       // Tenta buscar o cliente pelo usuario_id
-      let { data: clienteData } = await supabase
+      const { data: clienteData } = await supabase
         .from('clientes')
         .select('id')
         .eq('usuario_id', session.user.id)
         .single();
-
-      // Se não existir na tabela clientes, cria automaticamente para evitar erros
-      if (!clienteData) {
-        const { data: novoCliente } = await supabase
-          .from('clientes')
-          .insert([
-            {
-              nome: userData.nome,
-              telefone: userData.telefone || '(00) 00000-0000',
-              email: session.user.email,
-              usuario_id: session.user.id,
-            }
-          ])
-          .select('id')
-          .single();
-
-        if (novoCliente) {
-          clienteData = novoCliente;
-        }
-      }
 
       if (clienteData) {
         setClienteId(clienteData.id);
@@ -92,38 +81,17 @@ export default function DashboardPage() {
       if (servicosData) setServicos(servicosData);
     } 
     else if (userData?.tipo === 'barbeiro') {
-      let { data: barbeiroData } = await supabase
+      const { data: barbeiroData } = await supabase
         .from('barbeiros')
         .select('*')
         .eq('usuario_id', session.user.id)
         .single();
 
-      if (!barbeiroData) {
-        const { data: novoBarbeiro } = await supabase
-          .from('barbeiros')
-          .insert([
-            {
-              nome: userData.nome,
-              telefone: userData.telefone || '',
-              usuario_id: session.user.id,
-              horario_inicio: '08:00',
-              horario_fim: '18:00',
-              dias_trabalho: 'Segunda a Sábado'
-            }
-          ])
-          .select('*')
-          .single();
-
-        if (novoBarbeiro) {
-          barbeiroData = novoBarbeiro;
-        }
-      }
-
       if (barbeiroData) {
         setBarbeiroId(barbeiroData.id);
         setHorarioInicio(barbeiroData.horario_inicio || '08:00');
         setHorarioFim(barbeiroData.horario_fim || '18:00');
-        setDiasTrabalho(barbeiroData.dias_trabalho || 'Segunda a Sábado');
+        setDiasTrabalho(Array.isArray(barbeiroData.dias_trabalho) ? barbeiroData.dias_trabalho.join(',') : barbeiroData.dias_trabalho || '1,2,3,4,5,6');
 
         carregarAgendamentosBarbeiro(barbeiroData.id);
 
@@ -137,9 +105,13 @@ export default function DashboardPage() {
     }
 
     setLoading(false);
-  };
+  }, [router]);
 
-  const carregarAgendamentosCliente = async (cId: number) => {
+  useEffect(() => {
+    void carregarDados();
+  }, [carregarDados]);
+
+  async function carregarAgendamentosCliente(cId: number) {
     const { data } = await supabase
       .from('agendamentos')
       .select(`
@@ -150,10 +122,10 @@ export default function DashboardPage() {
       .order('data', { ascending: true })
       .order('horario', { ascending: true });
 
-    if (data) setAgendamentos(data);
-  };
+    if (data) setAgendamentos(data as unknown as Agendamento[]);
+  }
 
-  const carregarAgendamentosBarbeiro = async (bId: number) => {
+  async function carregarAgendamentosBarbeiro(bId: number) {
     const { data } = await supabase
       .from('agendamentos')
       .select(`
@@ -164,11 +136,11 @@ export default function DashboardPage() {
       .order('data', { ascending: true })
       .order('horario', { ascending: true });
 
-    if (data) setAgendamentos(data);
-  };
+    if (data) setAgendamentos(data as unknown as Agendamento[]);
+  }
 
   const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, '');
+    const valor = e.target.value.replace(/\D/g, '');
     if (!valor) {
       setNovoServicoPrecoFormatado('');
       return;
@@ -190,14 +162,14 @@ export default function DashboardPage() {
       .update({
         horario_inicio: horarioInicio,
         horario_fim: horarioFim,
-        dias_trabalho: diasTrabalho,
+        dias_trabalho: diasTrabalho.split(',').map((dia) => Number(dia.trim())).filter((dia) => Number.isInteger(dia) && dia >= 0 && dia <= 6),
       })
       .eq('id', barbeiroId);
 
     if (error) {
-      alert(`Erro ao salvar expediente: ${error.message}`);
+      setMensagem(`Erro ao salvar expediente: ${error.message}`);
     } else {
-      alert('Horários e dias de atendimento atualizados com sucesso!');
+      setMensagem('Expediente atualizado com sucesso. Use os números 0–6 para domingo–sábado.');
     }
   };
 
@@ -210,18 +182,12 @@ export default function DashboardPage() {
       return;
     }
 
-    const horarioFormatado = horarioAgendamento.length === 5 ? horarioAgendamento : `${horarioAgendamento}:00`;
-
-    const { error } = await supabase.from('agendamentos').insert([
-      {
-        cliente_id: clienteId,
-        barbeiro_id: parseInt(selectedBarbeiro),
-        servico_id: parseInt(selectedServico),
-        data: dataAgendamento,
-        horario: horarioFormatado,
-        status: 'agendado',
-      },
-    ]);
+    const { error } = await supabase.rpc('criar_agendamento', {
+      p_barbeiro_id: Number(selectedBarbeiro),
+      p_servico_id: Number(selectedServico),
+      p_data: dataAgendamento,
+      p_horario: horarioAgendamento,
+    });
 
     if (error) {
       setMensagem(`Erro ao agendar: ${error.message}`);
@@ -236,27 +202,37 @@ export default function DashboardPage() {
   };
 
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
-    const { error } = await supabase
-      .from('agendamentos')
-      .update({ status: novoStatus })
-      .eq('id', agendamentoId);
+    const { error } = await supabase.rpc('atualizar_status_agendamento', {
+      p_agendamento_id: agendamentoId,
+      p_status: novoStatus,
+    });
 
     if (error) {
-      alert(`Erro ao atualizar status: ${error.message}`);
+      setMensagem(`Erro ao atualizar status: ${error.message}`);
     } else {
       if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
     }
+  };
+
+  const cancelarAgendamento = async (agendamentoId: number) => {
+    const { error } = await supabase.rpc('cancelar_meu_agendamento', { p_agendamento_id: agendamentoId });
+    if (error) {
+      setMensagem(`Erro ao cancelar: ${error.message}`);
+      return;
+    }
+    setMensagem('Agendamento cancelado.');
+    if (clienteId) carregarAgendamentosCliente(clienteId);
   };
 
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!barbeiroId) {
-      alert('Erro: ID do barbeiro não encontrado.');
+      setMensagem('Erro: ID do barbeiro não encontrado.');
       return;
     }
     if (!novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) {
-      alert('Preencha todos os campos para cadastrar o serviço.');
+      setMensagem('Preencha todos os campos para cadastrar o serviço.');
       return;
     }
 
@@ -278,7 +254,7 @@ export default function DashboardPage() {
     ]);
 
     if (error) {
-      alert(`Erro ao adicionar serviço: ${error.message}`);
+      setMensagem(`Erro ao adicionar serviço: ${error.message}`);
     } else {
       setNovoServicoNome('');
       setNovoServicoPrecoFormatado('');
@@ -302,7 +278,7 @@ export default function DashboardPage() {
       .eq('id', servicoId);
 
     if (error) {
-      alert(`Erro ao excluir: ${error.message}`);
+      setMensagem(`Erro ao excluir: ${error.message}`);
     } else {
       const { data } = await supabase
         .from('servicos')
@@ -350,6 +326,9 @@ export default function DashboardPage() {
       </header>
 
       <section className="mx-auto mt-8 max-w-4xl space-y-6">
+        {mensagem && (
+          <p role="status" className="rounded border border-zinc-700 bg-zinc-800 p-3 text-center text-sm text-zinc-200">{mensagem}</p>
+        )}
         
         {usuario?.tipo === 'cliente' && (
           <>
@@ -390,7 +369,7 @@ export default function DashboardPage() {
 
                 {barbeiroSelecionadoInfo && (
                   <div className="md:col-span-2 rounded bg-zinc-800/40 p-3 border border-zinc-800 text-xs text-zinc-300 flex justify-between">
-                    <span>📅 <b>Dias:</b> {barbeiroSelecionadoInfo.dias_trabalho || 'Segunda a Sábado'}</span>
+                    <span>📅 <b>Dias:</b> {formatarDias(barbeiroSelecionadoInfo.dias_trabalho)}</span>
                     <span>⏰ <b>Horário:</b> {barbeiroSelecionadoInfo.horario_inicio} às {barbeiroSelecionadoInfo.horario_fim}</span>
                   </div>
                 )}
@@ -412,9 +391,6 @@ export default function DashboardPage() {
                 </div>
               </form>
 
-              {mensagem && (
-                <p className="mt-4 rounded border border-zinc-700 bg-zinc-800 p-3 text-center text-sm text-emerald-400">{mensagem}</p>
-              )}
             </div>
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
@@ -431,12 +407,15 @@ export default function DashboardPage() {
                         <p className="text-xs text-zinc-400">Data: {item.data.split('-').reverse().join('/')} às {item.horario?.slice(0, 5)}</p>
                       </div>
                       <span className={`self-start sm:self-center rounded px-2.5 py-1 text-xs font-medium border uppercase tracking-wider ${
-                        item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
+                        item.status === 'concluido' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
                         item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
                         'bg-blue-950 text-blue-400 border-blue-800'
                       }`}>
                         {item.status}
                       </span>
+                      {['agendado', 'confirmado'].includes(item.status) && (
+                        <button onClick={() => cancelarAgendamento(item.id)} className="rounded border border-red-900/50 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/60">Cancelar</button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -493,13 +472,13 @@ export default function DashboardPage() {
                           value={item.status}
                           onChange={(e) => atualizarStatus(item.id, e.target.value)}
                           className={`rounded px-2.5 py-1 text-xs font-medium uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${
-                            item.status === 'concluído' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
+                            item.status === 'concluido' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' :
                             item.status === 'cancelado' ? 'bg-red-950 text-red-400 border-red-800' :
                             'bg-blue-950 text-blue-400 border-blue-800'
                           }`}
                         >
                           <option value="agendado">Agendado</option>
-                          <option value="concluído">Concluído</option>
+                          <option value="concluido">Concluído</option>
                           <option value="cancelado">Cancelado</option>
                         </select>
                         <p className="text-xs text-zinc-500">{item.data.split('-').reverse().join('/')}</p>
@@ -543,7 +522,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-zinc-400">Nenhum serviço cadastrado.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {servicos.map(servico => dataAgendamento && (
+                  {servicos.map(servico => (
                     <div key={servico.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 p-3">
                       <div>
                         <p className="font-semibold text-white text-sm">{servico.nome}</p>

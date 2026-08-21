@@ -17,57 +17,17 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Função inteligente que verifica se o usuário já tem perfil no banco 
-    // quando ele logar (seja pelo botão ou clicando no link do e-mail)
-    const verificarECriarPerfil = async (session: any) => {
-      const userId = session.user.id;
-      
-      // 1. Checa se o usuário já existe na tabela 'usuarios'
-      const { data: usuarioExistente } = await supabase
-        .from('usuarios')
-        .select('id')
-        .eq('id', userId)
-        .single();
-
-      // 2. Se não existir, é o primeiro login dele após confirmar o e-mail!
-      if (!usuarioExistente) {
-        // Pegamos os dados que guardamos nos "metadados" na hora do cadastro
-        const { nome, telefone, tipo } = session.user.user_metadata;
-
-        if (nome && tipo) {
-          // Salva na tabela principal
-          await supabase.from('usuarios').insert([
-            { id: userId, nome, telefone, tipo }
-          ]);
-
-          // Salva na tabela específica
-          if (tipo === 'cliente') {
-            await supabase.from('clientes').insert([
-              { nome, telefone, email: session.user.email, usuario_id: userId }
-            ]);
-          } else if (tipo === 'barbeiro') {
-            await supabase.from('barbeiros').insert([
-              { nome, telefone, usuario_id: userId }
-            ]);
-          }
-        }
-      }
-
-      // Tudo certo? Vai pro painel!
-      router.push('/dashboard');
-    };
-
-    // Fica "escutando" se o usuário logou com sucesso
+    // The database trigger creates the profile atomically with the Auth user.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        verificarECriarPerfil(session);
+        router.replace('/dashboard');
       }
     });
 
     // Também checa assim que a página carrega (caso já esteja logado)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        verificarECriarPerfil(session);
+        router.replace('/dashboard');
       }
     });
 
@@ -127,7 +87,7 @@ export default function Home() {
 
     if (isSignUp) {
       // 1. Criar usuário e guardar os dados em "options.data"
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -183,9 +143,10 @@ export default function Home() {
           {isSignUp && (
             <>
               <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Nome Completo</label>
+            <label className="mb-1 block text-sm font-medium text-zinc-300">Nome Completo</label>
                 <input
                   type="text"
+                  minLength={2}
                   required
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
@@ -240,13 +201,15 @@ export default function Home() {
           <div>
             <label className="mb-1 block text-sm font-medium text-zinc-300">Senha</label>
             <input
-              type="password"
+                  type="password"
+              minLength={8}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2.5 text-white focus:border-emerald-500 focus:outline-none"
               placeholder="••••••••"
             />
+            {isSignUp && <span className="mt-1 block text-xs text-zinc-500">Use ao menos 8 caracteres.</span>}
           </div>
 
           <button
