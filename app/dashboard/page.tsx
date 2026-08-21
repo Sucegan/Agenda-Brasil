@@ -102,6 +102,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
+    toast.dismiss(); // Limpa qualquer toast travado ao carregar a página
     carregarDados();
     gerarDiasProximos();
   }, []);
