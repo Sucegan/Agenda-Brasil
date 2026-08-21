@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
+import type { Appointment, Barber, Service, UserProfile } from '@/lib/database.types';
 import { 
   Wallet, Scissors, TrendingUp, Clock, CalendarDays, 
   LogOut, Plus, Trash2, CheckCircle2, MessageCircle, 
@@ -31,7 +32,7 @@ const StatusDropdown = ({ currentStatus, onChange }: { currentStatus: string, on
   const statusConfig: Record<string, { color: string, label: string }> = {
     'agendado': { color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', label: 'AGENDADO' },
     'confirmado': { color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', label: 'CONFIRMADO' },
-    'concluído': { color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', label: 'CONCLUÍDO' },
+    'concluido': { color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', label: 'CONCLUÍDO' },
     'cancelado': { color: 'text-red-400 bg-red-500/10 border-red-500/20', label: 'CANCELADO' },
   };
 
@@ -73,20 +74,28 @@ const StatusDropdown = ({ currentStatus, onChange }: { currentStatus: string, on
 };
 
 export default function DashboardPage() {
-  const [usuario, setUsuario] = useState<any>(null);
-  const [clienteId, setClienteId] = useState<number | null>(null);
+  const [usuario, setUsuario] = useState<UserProfile | null>(null);
   const [barbeiroId, setBarbeiroId] = useState<number | null>(null);
-  const [barbeiros, setBarbeiros] = useState<any[]>([]);
-  const [servicos, setServicos] = useState<any[]>([]);
-  const [agendamentos, setAgendamentos] = useState<any[]>([]);
+  const [barbeiros, setBarbeiros] = useState<Barber[]>([]);
+  const [servicos, setServicos] = useState<Service[]>([]);
+  const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
 
   // Estados Cliente
-  const [selectedBarbeiro, setSelectedBarbeiro] = useState<any>(null);
-  const [selectedServico, setSelectedServico] = useState<any>(null);
+  const [selectedBarbeiro, setSelectedBarbeiro] = useState<Barber | null>(null);
+  const [selectedServico, setSelectedServico] = useState<Service | null>(null);
   const [selectedData, setSelectedData] = useState<string>('');
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
   const [selectedHorario, setSelectedHorario] = useState<string>('');
-  const [diasProximos, setDiasProximos] = useState<any[]>([]);
+  const [diasProximos] = useState<{ iso: string; dia: number; mes: string; semana: string }[]>(() => {
+    const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    return Array.from({ length: 15 }, (_, index) => {
+      const data = new Date();
+      data.setHours(12, 0, 0, 0);
+      data.setDate(data.getDate() + index);
+      return { iso: `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`, dia: data.getDate(), mes: meses[data.getMonth()], semana: diasSemana[data.getDay()] };
+    });
+  });
   const [step, setStep] = useState<number>(1);
 
   // Estados Barbeiro
@@ -95,135 +104,81 @@ export default function DashboardPage() {
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
   const [horarioInicio, setHorarioInicio] = useState('08:00');
   const [horarioFim, setHorarioFim] = useState('18:00');
-  const [inicioAlmoco, setInicioAlmoco] = useState('12:00');
-  const [fimAlmoco, setFimAlmoco] = useState('13:00');
 
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    toast.dismiss(); // Limpa qualquer toast travado ao carregar a página
-    carregarDados();
-    gerarDiasProximos();
-  }, []);
+  const carregarAgendamentosCliente = async () => {
+    const { data, error } = await supabase.from('agendamentos').select('*').order('data').order('horario');
+    if (error) throw error;
+    setAgendamentos(data ?? []);
+  };
 
-  const gerarDiasProximos = () => {
-    const dias = [];
-    const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-    for (let i = 0; i < 15; i++) {
-      const data = new Date();
-      data.setDate(data.getDate() + i);
-      dias.push({ iso: data.toISOString().split('T')[0], dia: data.getDate(), mes: meses[data.getMonth()], semana: diasSemana[data.getDay()] });
-    }
-    setDiasProximos(dias);
+  const carregarAgendamentosBarbeiro = async (id: number) => {
+    const { data, error } = await supabase.from('agendamentos').select('*').eq('barbeiro_id', id).order('data').order('horario');
+    if (error) throw error;
+    setAgendamentos(data ?? []);
+  };
+
+  const carregarServicosBarbeiro = async (id: number) => {
+    const { data, error } = await supabase.from('servicos').select('*').eq('barbeiro_id', id).order('nome');
+    if (error) throw error;
+    setServicos(data ?? []);
   };
 
   const carregarDados = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return router.push('/');
-    const { data: userData } = await supabase.from('usuarios').select('*').eq('id', session.user.id).single();
-    setUsuario(userData);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return router.replace('/');
+      const { data: userData, error: userError } = await supabase.from('usuarios').select('*').eq('id', session.user.id).single();
+      if (userError || !userData) throw new Error('Não foi possível carregar o perfil. Confirme o e-mail e tente novamente.');
+      setUsuario(userData);
 
-    if (userData?.tipo === 'cliente') {
-      let { data: clienteData } = await supabase.from('clientes').select('id').eq('usuario_id', session.user.id).single();
-      if (!clienteData) {
-        const { data: novoCliente } = await supabase.from('clientes').insert([{ nome: userData.nome, telefone: userData.telefone || '', email: session.user.email, usuario_id: session.user.id }]).select('id').single();
-        if (novoCliente) clienteData = novoCliente;
-      }
-      if (clienteData) {
-        setClienteId(clienteData.id);
-        carregarAgendamentosCliente(clienteData.id);
-      }
-      const { data: barbeirosData } = await supabase.from('barbeiros').select('*');
-      const { data: servicosData } = await supabase.from('servicos').select('*').order('nome');
-      if (barbeirosData) setBarbeiros(barbeirosData);
-      if (servicosData) setServicos(servicosData);
-    } 
-    else if (userData?.tipo === 'barbeiro') {
-      let { data: barbeiroData } = await supabase.from('barbeiros').select('*').eq('usuario_id', session.user.id).single();
-      if (!barbeiroData) {
-        const { data: novoBarbeiro } = await supabase.from('barbeiros').insert([{ nome: userData.nome, telefone: userData.telefone || '', usuario_id: session.user.id }]).select('*').single();
-        if (novoBarbeiro) barbeiroData = novoBarbeiro;
-      }
-      if (barbeiroData) {
+      if (userData.tipo === 'cliente') {
+        const [{ data: barbeirosData, error: barbeirosError }, { data: servicosData, error: servicosError }] = await Promise.all([
+          supabase.from('barbeiros').select('*').order('nome'),
+          supabase.from('servicos').select('*').order('nome'),
+        ]);
+        if (barbeirosError || servicosError) throw barbeirosError || servicosError;
+        setBarbeiros(barbeirosData ?? []);
+        setServicos(servicosData ?? []);
+        await carregarAgendamentosCliente();
+      } else {
+        const { data: barbeiroData, error } = await supabase.from('barbeiros').select('*').eq('usuario_id', session.user.id).single();
+        if (error || !barbeiroData) throw new Error('Não foi possível carregar o perfil profissional.');
         setBarbeiroId(barbeiroData.id);
-        setHorarioInicio(barbeiroData.horario_inicio || '08:00');
-        setHorarioFim(barbeiroData.horario_fim || '18:00');
-        setInicioAlmoco(barbeiroData.inicio_almoco || '12:00');
-        setFimAlmoco(barbeiroData.fim_almoco || '13:00');
-        carregarAgendamentosBarbeiro(barbeiroData.id);
-        const { data: servicosData } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroData.id).order('nome');
-        if (servicosData) setServicos(servicosData);
+        setHorarioInicio(barbeiroData.horario_inicio);
+        setHorarioFim(barbeiroData.horario_fim);
+        await Promise.all([carregarAgendamentosBarbeiro(barbeiroData.id), carregarServicosBarbeiro(barbeiroData.id)]);
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao carregar os dados.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
-
-  const carregarAgendamentosCliente = async (cId: number) => {
-    const { data } = await supabase.from('agendamentos').select(`id, data, horario, status, barbeiros(nome), servicos(nome, preco)`).eq('cliente_id', cId).order('data', { ascending: true }).order('horario', { ascending: true });
-    if (data) setAgendamentos(data);
-  };
-
-  const carregarAgendamentosBarbeiro = async (bId: number) => {
-    const { data } = await supabase.from('agendamentos').select(`id, data, horario, status, clientes(nome, telefone), servicos(nome, duracao, preco)`).eq('barbeiro_id', bId).order('data', { ascending: true }).order('horario', { ascending: true });
-    if (data) setAgendamentos(data);
   };
 
   const calcularHorariosDisponiveis = async (dataSelecionada: string) => {
     if (!selectedBarbeiro || !selectedServico) return;
     
-    const { data: agendaDoDia } = await supabase.from('agendamentos').select('horario, servicos(duracao), status').eq('barbeiro_id', selectedBarbeiro.id).eq('data', dataSelecionada).neq('status', 'cancelado');
-    const converterParaMinutos = (horaStr: string) => { const [h, m] = horaStr.split(':').map(Number); return h * 60 + m; };
-    const converterParaHora = (minutosTotal: number) => `${String(Math.floor(minutosTotal / 60)).padStart(2, '0')}:${String(minutosTotal % 60).padStart(2, '0')}`;
-
-    const inicioExp = converterParaMinutos(selectedBarbeiro.horario_inicio || '08:00');
-    const fimExp = converterParaMinutos(selectedBarbeiro.horario_fim || '18:00');
-    const iniAlmoco = converterParaMinutos(selectedBarbeiro.inicio_almoco || '12:00');
-    const fAlmoco = converterParaMinutos(selectedBarbeiro.fim_almoco || '13:00');
-    const duracaoServico = selectedServico.duracao;
-    
-    const bloqueios = (agendaDoDia || []).map((ag: any) => {
-      const inicio = converterParaMinutos(ag.horario);
-      const duracao = Array.isArray(ag.servicos) ? ag.servicos[0]?.duracao : ag.servicos?.duracao;
-      return { inicio, fim: inicio + (duracao || 30) };
-    });
-
-    let horariosValidos = [];
-    const agora = new Date();
-    const dataHojeISO = new Date(agora.getTime() - (agora.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-    const horaAtualMinutos = agora.getHours() * 60 + agora.getMinutes();
-
-    for (let tempoAtual = inicioExp; (tempoAtual + duracaoServico) <= fimExp; tempoAtual += 30) {
-      if (dataSelecionada === dataHojeISO && tempoAtual <= horaAtualMinutos) continue;
-      const fimDoSlot = tempoAtual + duracaoServico;
-      if (tempoAtual < fAlmoco && fimDoSlot > iniAlmoco) continue;
-      const temConflito = bloqueios.some((b: any) => (tempoAtual < b.fim && fimDoSlot > b.inicio));
-      if (!temConflito) horariosValidos.push(converterParaHora(tempoAtual));
-    }
-
-    setHorariosDisponiveis(horariosValidos); setSelectedData(dataSelecionada); setSelectedHorario('');
+    const { data, error } = await supabase.rpc('listar_horarios_disponiveis', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: dataSelecionada });
+    if (error) return toast.error(error.message);
+    setHorariosDisponiveis((data ?? []).map(({ horario }) => horario.slice(0, 5)));
+    setSelectedData(dataSelecionada); setSelectedHorario('');
   };
 
   // AGENDAR USANDO TOAST.PROMISE (BLINDADO CONTRA BUGS)
   const handleAgendar = async () => {
-    if (!clienteId || !selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) {
+    if (!selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) {
       toast.error('Preencha todos os campos.');
       return;
     }
 
     const promessa = async () => {
-      const { error } = await supabase.from('agendamentos').insert([{ 
-        cliente_id: clienteId, 
-        barbeiro_id: selectedBarbeiro.id, 
-        servico_id: selectedServico.id, 
-        data: selectedData, 
-        horario: `${selectedHorario}:00`, 
-        status: 'agendado' 
-      }]);
+      const { error } = await supabase.rpc('criar_agendamento', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: selectedData, p_horario: `${selectedHorario}:00` });
       if (error) throw new Error(error.message);
       setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario('');
-      carregarAgendamentosCliente(clienteId);
+      await carregarAgendamentosCliente();
     };
 
     toast.promise(promessa(), {
@@ -233,17 +188,13 @@ export default function DashboardPage() {
     });
   };
 
-  const cancelarAgendamentoCliente = async (id: number, data: string, horario: string) => {
-    const [ano, mes, dia] = data.split('-'); const [hora, min] = horario.split(':');
-    const diffHoras = (new Date(Number(ano), Number(mes) - 1, Number(dia), Number(hora), Number(min)).getTime() - new Date().getTime()) / (1000 * 60 * 60);
-    if (diffHoras > 0 && diffHoras < 2) return toast.error('Ligue para a barbearia para cancelar com menos de 2h.');
-    
+  const cancelarAgendamentoCliente = async (id: number) => {
     if (confirm('Cancelar este agendamento?')) {
       toast.promise(
         async () => {
-          const { error } = await supabase.from('agendamentos').update({ status: 'cancelado' }).eq('id', id);
-          if (error) throw new Error();
-          if (clienteId) carregarAgendamentosCliente(clienteId);
+          const { error } = await supabase.rpc('cancelar_meu_agendamento', { p_agendamento_id: id });
+          if (error) throw error;
+          await carregarAgendamentosCliente();
         },
         { loading: 'Cancelando...', success: 'Agendamento cancelado.', error: 'Erro ao cancelar.' }
       );
@@ -253,7 +204,7 @@ export default function DashboardPage() {
   const formatarZap = (numero: string) => `https://wa.me/55${numero.replace(/\D/g, '')}`;
 
   const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, '');
+    const valor = e.target.value.replace(/\D/g, '');
     if (!valor) return setNovoServicoPrecoFormatado('');
     setNovoServicoPrecoFormatado((Number(valor) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
   };
@@ -263,22 +214,19 @@ export default function DashboardPage() {
     if (!barbeiroId) return;
     toast.promise(
       async () => {
-        const { error } = await supabase.from('barbeiros').update({ 
-          horario_inicio: horarioInicio, 
-          horario_fim: horarioFim, 
-          inicio_almoco: inicioAlmoco, 
-          fim_almoco: fimAlmoco 
-        }).eq('id', barbeiroId);
-        if (error) throw new Error();
+        if (horarioInicio >= horarioFim) throw new Error('O horário de início deve ser anterior ao fim.');
+        const { error } = await supabase.from('barbeiros').update({ horario_inicio: horarioInicio, horario_fim: horarioFim }).eq('id', barbeiroId);
+        if (error) throw error;
       },
       { loading: 'Salvando horários...', success: 'Expediente atualizado!', error: 'Erro ao salvar expediente.' }
     );
   };
 
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
-    await supabase.from('agendamentos').update({ status: novoStatus }).eq('id', agendamentoId);
+    const { error } = await supabase.rpc('atualizar_status_agendamento', { p_agendamento_id: agendamentoId, p_status: novoStatus as 'agendado' | 'confirmado' | 'concluido' | 'cancelado' });
+    if (error) return toast.error(error.message);
     toast.success('Status atualizado!');
-    if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
+    if (barbeiroId) await carregarAgendamentosBarbeiro(barbeiroId);
   };
 
   const handleAdicionarServico = async (e: React.FormEvent) => {
@@ -292,10 +240,9 @@ export default function DashboardPage() {
     toast.promise(
       async () => {
         const { error } = await supabase.from('servicos').insert([{ nome: novoServicoNome, preco, duracao: parseInt(novoServicoDuracao), barbeiro_id: barbeiroId }]);
-        if (error) throw new Error();
+        if (error) throw error;
         setNovoServicoNome(''); setNovoServicoPrecoFormatado(''); setNovoServicoDuracao('');
-        const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
-        if (data) setServicos(data);
+        await carregarServicosBarbeiro(barbeiroId);
       },
       { loading: 'Adicionando serviço...', success: 'Serviço adicionado!', error: 'Erro ao adicionar serviço.' }
     );
@@ -305,19 +252,27 @@ export default function DashboardPage() {
     if (!confirm('Excluir este serviço?')) return;
     toast.promise(
       async () => {
-        await supabase.from('servicos').delete().eq('id', servicoId);
-        const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
-        if (data) setServicos(data);
+        const { error } = await supabase.from('servicos').delete().eq('id', servicoId);
+        if (error) throw error;
+        if (barbeiroId) await carregarServicosBarbeiro(barbeiroId);
       },
       { loading: 'Excluindo...', success: 'Serviço excluído.', error: 'Erro ao excluir.' }
     );
   };
 
   const hoje = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-  const agendamentosHoje = agendamentos.filter((a: any) => a.data === hoje);
-  const faturamentoHoje = agendamentosHoje.filter((a: any) => a.status === 'concluído').reduce((acc: number, curr: any) => acc + (Number(Array.isArray(curr.servicos) ? curr.servicos[0]?.preco : curr.servicos?.preco) || 0), 0);
-  const cortesHoje = agendamentosHoje.filter((a: any) => a.status === 'concluído').length;
-  const previsaoSemana = agendamentos.filter((a: any) => a.data >= hoje && a.status !== 'cancelado').reduce((acc: number, curr: any) => acc + (Number(Array.isArray(curr.servicos) ? curr.servicos[0]?.preco : curr.servicos?.preco) || 0), 0);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { void carregarDados(); }, 0);
+    const subscription = supabase.channel('agenda-atualizada').on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => { void carregarDados(); }).subscribe();
+    return () => { window.clearTimeout(timeout); void supabase.removeChannel(subscription); };
+    // The initial load and subscription are deliberately registered once per mounted dashboard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const agendamentosHoje = agendamentos.filter((a) => a.data === hoje);
+  const faturamentoHoje = agendamentosHoje.filter((a) => a.status === 'concluido').reduce((acc, curr) => acc + Number(curr.servico_preco || 0), 0);
+  const cortesHoje = agendamentosHoje.filter((a) => a.status === 'concluido').length;
+  const previsaoSemana = agendamentos.filter((a) => a.data >= hoje && a.status !== 'cancelado').reduce((acc, curr) => acc + Number(curr.servico_preco || 0), 0);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -355,7 +310,7 @@ export default function DashboardPage() {
                   <div className="animate-in fade-in duration-300">
                     <p className="mb-4 text-sm font-medium text-zinc-400">Selecione o profissional:</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {barbeiros.map((b: any) => (
+                      {barbeiros.map((b) => (
                         <button key={b.id} onClick={() => { setSelectedBarbeiro(b); setStep(2); }} className="flex items-center gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-800/30 hover:border-emerald-500/50 hover:bg-zinc-800 transition-all text-left group">
                           <div className="h-12 w-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl font-bold text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">{b.nome?.charAt(0).toUpperCase()}</div>
                           <div><p className="font-semibold text-white">{b.nome}</p><p className="text-xs text-zinc-400">Atendimento Profissional</p></div>
@@ -372,7 +327,7 @@ export default function DashboardPage() {
                     </div>
                     <p className="mb-4 text-sm font-medium text-zinc-400">Selecione um de nossos serviços 👇</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {servicos.filter(s => s.barbeiro_id === selectedBarbeiro.id).map((s: any) => (
+                      {servicos.filter(s => s.barbeiro_id === selectedBarbeiro.id).map((s) => (
                         <button key={s.id} onClick={() => { setSelectedServico(s); setStep(3); }} className="flex flex-col items-center justify-center p-4 rounded-xl border border-amber-600/30 bg-amber-500/10 hover:bg-amber-500 hover:text-zinc-950 transition-all text-center group text-amber-500">
                           <span className="font-semibold text-sm group-hover:text-zinc-950">{s.nome}</span>
                           <span className="font-bold mt-1 group-hover:text-zinc-950">R$ {Number(s.preco).toFixed(2)}</span>
@@ -393,7 +348,7 @@ export default function DashboardPage() {
                     <p className="mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2"><CalendarDays size={16} className="text-amber-500"/> Qual dia você deseja agendar?</p>
                     
                     <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
-                      {diasProximos.map((d: any) => (
+                      {diasProximos.map((d) => (
                         <button key={d.iso} onClick={() => calcularHorariosDisponiveis(d.iso)} className={`snap-start shrink-0 flex flex-col items-center justify-center h-20 w-16 rounded-xl border transition-all ${selectedData === d.iso ? 'bg-amber-500 border-amber-400 text-zinc-950 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700'}`}>
                           <span className="text-[10px] font-bold tracking-wider">{d.mes}</span>
                           <span className="text-xl font-black my-1">{d.dia}</span>
@@ -428,11 +383,11 @@ export default function DashboardPage() {
                 <h2 className="mb-4 text-lg font-bold flex items-center gap-2"><CalendarDays size={20} className="text-emerald-500"/> Meus Agendamentos</h2>
                 {agendamentos.length === 0 ? <p className="text-sm text-zinc-500">Nenhum agendamento encontrado.</p> : (
                   <div className="space-y-3">
-                    {agendamentos.map((item: any) => (
+                    {agendamentos.map((item) => (
                       <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-5 gap-4">
                         <div>
-                          <p className="font-bold text-white text-base">{item.servicos?.nome}</p>
-                          <p className="text-sm text-zinc-400">Profissional: <span className="text-zinc-200">{item.barbeiros?.nome}</span></p>
+                          <p className="font-bold text-white text-base">{item.servico_nome}</p>
+                          <p className="text-sm text-zinc-400">Profissional: <span className="text-zinc-200">{item.barbeiro_nome}</span></p>
                           <div className="mt-2.5 flex items-center gap-2 text-xs font-medium">
                             <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg">📅 {item.data.split('-').reverse().join('/')}</span>
                             <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg">🕒 {item.horario?.slice(0, 5)}</span>
@@ -440,12 +395,12 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex flex-col items-end justify-between gap-2">
                           <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase border ${
-                            item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' :
+                            item.status === 'concluido' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' :
                             item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' :
                             'bg-blue-950/50 text-blue-400 border-blue-900/50'
                           }`}>{item.status}</span>
                           {(item.status === 'agendado' || item.status === 'confirmado') && (
-                            <button onClick={() => cancelarAgendamentoCliente(item.id, item.data, item.horario)} className="text-xs text-red-400 hover:text-red-300 underline mt-1">Cancelar</button>
+                            <button onClick={() => cancelarAgendamentoCliente(item.id)} className="text-xs text-red-400 hover:text-red-300 underline mt-1">Cancelar</button>
                           )}
                         </div>
                       </div>
@@ -506,8 +461,6 @@ export default function DashboardPage() {
               <h2 className="mb-6 text-lg font-bold flex items-center gap-2 text-emerald-400"><Clock size={20} /> Meu Expediente</h2>
               <form onSubmit={handleSalvarExpediente} className="grid grid-cols-2 gap-4 md:grid-cols-5 items-end">
                 {[{label: 'Início', val: horarioInicio, set: setHorarioInicio, color: 'focus:border-emerald-500'}, 
-                  {label: 'Saída Almoço', val: inicioAlmoco, set: setInicioAlmoco, color: 'focus:border-amber-500'}, 
-                  {label: 'Volta Almoço', val: fimAlmoco, set: setFimAlmoco, color: 'focus:border-amber-500'}, 
                   {label: 'Fim', val: horarioFim, set: setHorarioFim, color: 'focus:border-emerald-500'}].map((campo, i) => (
                   <div key={i}>
                     <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">{campo.label}</label>
@@ -528,20 +481,20 @@ export default function DashboardPage() {
               <h2 className="mb-6 text-lg font-bold flex items-center gap-2 text-emerald-400"><CalendarDays size={20} /> Minha Agenda</h2>
               {agendamentos.length === 0 ? <p className="text-sm text-zinc-500">Nenhum cliente agendado.</p> : (
                 <div className="space-y-3">
-                  {agendamentos.map((item: any) => (
+                  {agendamentos.map((item) => (
                     <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-5 gap-4 hover:border-zinc-700/80 transition-all">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
                            <p className="font-black text-white text-2xl tracking-tight">{item.horario?.slice(0, 5)}</p>
-                           {item.clientes?.telefone && (
-                             <a href={`${formatarZap(item.clientes.telefone)}?text=Olá ${item.clientes.nome}, confirmando seu agendamento para hoje às ${item.horario?.slice(0, 5)}!`} target="_blank" rel="noopener noreferrer" 
+                           {item.cliente_telefone && (
+                             <a href={`${formatarZap(item.cliente_telefone)}?text=Olá ${item.cliente_nome}, confirmando seu agendamento para hoje às ${item.horario?.slice(0, 5)}!`} target="_blank" rel="noopener noreferrer"
                                 className="bg-[#25D366]/10 text-[#25D366] text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 hover:bg-[#25D366]/20 transition-colors border border-[#25D366]/20 shadow-sm">
                                <MessageCircle size={14} /> WhatsApp
                              </a>
                            )}
                         </div>
-                        <p className="text-sm text-zinc-200 font-medium">{item.clientes?.nome} <span className="text-xs text-zinc-500 ml-2 font-mono">{item.clientes?.telefone}</span></p>
-                        <p className="text-xs text-zinc-400 mt-1.5 flex items-center gap-1.5"><Scissors size={12} className="text-amber-500"/> {item.servicos?.nome} • <strong className="text-emerald-400">R$ {Number(Array.isArray(item.servicos) ? item.servicos[0]?.preco : item.servicos?.preco).toFixed(2)}</strong></p>
+                        <p className="text-sm text-zinc-200 font-medium">{item.cliente_nome} <span className="text-xs text-zinc-500 ml-2 font-mono">{item.cliente_telefone}</span></p>
+                        <p className="text-xs text-zinc-400 mt-1.5 flex items-center gap-1.5"><Scissors size={12} className="text-amber-500"/> {item.servico_nome} • <strong className="text-emerald-400">R$ {Number(item.servico_preco).toFixed(2)}</strong></p>
                       </div>
                       
                       <div className="flex flex-col sm:items-end justify-between gap-3">
@@ -580,7 +533,7 @@ export default function DashboardPage() {
               </form>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {servicos.map((s: any) => (
+                {servicos.map((s) => (
                   <div key={s.id} className="flex items-center justify-between rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4 hover:border-zinc-700 transition-colors">
                     <div>
                       <p className="font-bold text-white text-sm">{s.nome}</p>

@@ -50,8 +50,8 @@ function LoginForm() {
           password: senha,
           options: { 
             data: { 
-              display_name: nome, 
-              phone: telefone,
+              nome,
+              telefone,
               tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente'
             } 
           }
@@ -69,8 +69,8 @@ function LoginForm() {
         // Por ora, mandamos para o login:
         setTimeout(() => router.push('/'), 2000);
       }
-    } catch (err: any) { 
-      toast.error(err.message, { id: toastId }); 
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a operação.', { id: toastId });
     } finally { 
       setLoading(false); 
     }

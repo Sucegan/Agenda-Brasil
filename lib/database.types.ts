@@ -49,6 +49,9 @@ export interface Database {
           servico_nome: string | null;
           servico_preco: number | null;
           servico_duracao: number | null;
+          barbeiro_nome: string | null;
+          cliente_nome: string | null;
+          cliente_telefone: string | null;
           created_at: string;
           cancelado_at: string | null;
         };

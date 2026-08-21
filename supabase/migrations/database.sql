@@ -350,3 +350,16 @@ grant execute on function public.listar_horarios_disponiveis(bigint, bigint, dat
 grant execute on function public.atualizar_status_agendamento(bigint, text) to authenticated;
 grant execute on function public.cancelar_meu_agendamento(bigint) to authenticated;
 grant execute on function public.listar_barbeiros_disponiveis() to authenticated;
+
+-- Keep open dashboards in sync after bookings, cancellations, or status changes.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'agendamentos'
+     ) then
+    alter publication supabase_realtime add table public.agendamentos;
+  end if;
+end;
+$$;
