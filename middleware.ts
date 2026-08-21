@@ -20,17 +20,19 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  // getUser validates and refreshes the cookie-backed session before deciding
+  // where to send the visitor. This prevents a successful login from being
+  // redirected back to the home page while Safari still persists its cookies.
+  const { data: { user } } = await supabase.auth.getUser();
   const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
 
-  if (isDashboard && !claims?.sub) {
+  if (isDashboard && !user) {
     const redirect = NextResponse.redirect(new URL("/", request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;
   }
 
-  if (request.nextUrl.pathname === "/" && claims?.sub) {
+  if (request.nextUrl.pathname === "/" && user) {
     const redirect = NextResponse.redirect(new URL("/dashboard", request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;

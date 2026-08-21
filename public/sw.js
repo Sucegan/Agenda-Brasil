@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agenda-brasil-offline-v1';
+const CACHE_NAME = 'agenda-brasil-offline-v2';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -7,7 +7,15 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    Promise.all([
+      caches.keys().then((names) => Promise.all(
+        names.filter((name) => name.startsWith('agenda-brasil-offline-') && name !== CACHE_NAME)
+          .map((name) => caches.delete(name)),
+      )),
+      self.clients.claim(),
+    ]),
+  );
 });
 
 self.addEventListener('fetch', (event) => {

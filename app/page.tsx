@@ -54,7 +54,11 @@ function LoginForm() {
         if (error) throw new Error('E-mail ou senha incorretos.');
         
         toast.success('Login realizado!', { id: toastId });
-        router.push('/dashboard');
+        // A full navigation waits for the browser to persist the auth cookie.
+        // Client-side navigation could race this write in Safari and require a
+        // manual page refresh after every sign-in.
+        window.location.assign('/dashboard');
+        return;
       } else {
         if (!nome || !telefone) throw new Error('Preencha todos os campos.');
         if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');

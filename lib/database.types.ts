@@ -101,6 +101,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: PublicBarber[];
       };
+      listar_meus_agendamentos: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["agendamentos"]["Row"][];
+      };
       criar_convite_barbeiro: {
         Args: Record<string, never>;
         Returns: string;

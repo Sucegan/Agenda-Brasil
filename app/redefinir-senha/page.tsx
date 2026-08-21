@@ -20,8 +20,10 @@ export default function ResetPasswordPage() {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) toast.error('Este link expirou ou já foi utilizado. Solicite outro.');
       }
-      const { data: { session } } = await supabase.auth.getSession();
-      setPronto(Boolean(session));
+      // getUser validates the refreshed cookie instead of only reading a
+      // potentially stale client cache, which is important on Safari.
+      const { data: { user } } = await supabase.auth.getUser();
+      setPronto(Boolean(user));
       setValidando(false);
     };
     void prepararRecuperacao();

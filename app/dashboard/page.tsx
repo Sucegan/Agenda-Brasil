@@ -107,12 +107,14 @@ export default function DashboardPage() {
   const [email, setEmail] = useState('');
   const [negocio, setNegocio] = useState<BusinessSettings | null>(null);
   const [barbeiro, setBarbeiro] = useState<Barber | null>(null);
+  const [clienteId, setClienteId] = useState<number | null>(null);
   const [barbeiros, setBarbeiros] = useState<PublicBarber[]>([]);
   const [servicos, setServicos] = useState<Service[]>([]);
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
   const [feriados, setFeriados] = useState<BusinessHoliday[]>([]);
   const [bloqueios, setBloqueios] = useState<ScheduleBlock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [nomePerfil, setNomePerfil] = useState('');
@@ -149,14 +151,15 @@ export default function DashboardPage() {
   const hoje = brazilDateISO();
 
   const carregarDados = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) throw new Error('Não foi possível validar sua sessão. Verifique sua conexão e tente novamente.');
+    if (!user) {
       router.replace('/');
       return;
     }
-    setEmail(session.user.email ?? '');
+    setEmail(user.email ?? '');
     const [{ data: perfil, error: perfilError }, { data: configuracoes, error: configError }, { data: feriadosData, error: feriadosError }] = await Promise.all([
-      supabase.from('usuarios').select('*').eq('id', session.user.id).single(),
+      supabase.from('usuarios').select('*').eq('id', user.id).single(),
       supabase.from('configuracoes_negocio').select('*').eq('id', true).maybeSingle(),
       supabase.from('feriados_negocio').select('*').order('data'),
     ]);
@@ -174,28 +177,31 @@ export default function DashboardPage() {
       setLogoNegocio(configuracoes.logo_url ?? '');
     }
     if (perfil.tipo === 'cliente') {
-      const [{ data: profissionais, error: profissionaisError }, { data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }] = await Promise.all([
+      const [{ data: profissionais, error: profissionaisError }, { data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: cliente, error: clienteError }] = await Promise.all([
         supabase.rpc('listar_barbeiros_publicos'),
         supabase.from('servicos').select('*').order('nome'),
-        supabase.from('agendamentos').select('*').order('data').order('horario'),
+        supabase.rpc('listar_meus_agendamentos'),
+        supabase.from('clientes').select('id').eq('usuario_id', user.id).single(),
       ]);
-      if (profissionaisError || servicosError || agendaError) throw profissionaisError ?? servicosError ?? agendaError;
+      if (profissionaisError || servicosError || agendaError || clienteError || !cliente) throw profissionaisError ?? servicosError ?? agendaError ?? clienteError ?? new Error('Não foi possível carregar o perfil de cliente.');
       setBarbeiros(profissionais ?? []);
       setServicos(servicosData ?? []);
       setAgendamentos(agendaData ?? []);
       setBarbeiro(null);
+      setClienteId(cliente.id);
       setBloqueios([]);
       return;
     }
-    const { data: profissional, error: profissionalError } = await supabase.from('barbeiros').select('*').eq('usuario_id', session.user.id).single();
+    const { data: profissional, error: profissionalError } = await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).single();
     if (profissionalError || !profissional) throw new Error('Não foi possível carregar o perfil profissional.');
     const [{ data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: bloqueiosData, error: bloqueiosError }] = await Promise.all([
       supabase.from('servicos').select('*').eq('barbeiro_id', profissional.id).order('nome'),
-      supabase.from('agendamentos').select('*').eq('barbeiro_id', profissional.id).order('data').order('horario'),
+      supabase.rpc('listar_meus_agendamentos'),
       supabase.from('bloqueios_agenda').select('*').eq('barbeiro_id', profissional.id).order('data_inicio'),
     ]);
     if (servicosError || agendaError || bloqueiosError) throw servicosError ?? agendaError ?? bloqueiosError;
     setBarbeiro(profissional);
+    setClienteId(null);
     setServicos(servicosData ?? []);
     setAgendamentos(agendaData ?? []);
     setBloqueios(bloqueiosData ?? []);
@@ -206,18 +212,47 @@ export default function DashboardPage() {
     setDiasTrabalho(profissional.dias_trabalho);
   }, [router]);
 
-  useEffect(() => {
-    const initialLoad = window.setTimeout(() => {
-      void carregarDados().catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Falha ao carregar os dados.')).finally(() => setLoading(false));
-    }, 0);
-    const channel = supabase.channel('agenda-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, () => { void carregarDados(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos' }, () => { void carregarDados(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueios_agenda' }, () => { void carregarDados(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'feriados_negocio' }, () => { void carregarDados(); })
-      .subscribe();
-    return () => { window.clearTimeout(initialLoad); void supabase.removeChannel(channel); };
+  const recarregar = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    void carregarDados()
+      .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Falha ao carregar os dados.'))
+      .finally(() => setLoading(false));
   }, [carregarDados]);
+
+  const usuarioId = usuario?.id;
+  const tipoUsuario = usuario?.tipo;
+  const barbeiroId = barbeiro?.id;
+
+  useEffect(() => {
+    // Running after hydration avoids a Safari race between the first render and
+    // the browser writing the session cookie after sign-in.
+    const initialLoad = window.setTimeout(recarregar, 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [recarregar]);
+
+  useEffect(() => {
+    const appointmentFilter = tipoUsuario === 'cliente'
+      ? (clienteId ? `cliente_id=eq.${clienteId}` : null)
+      : (barbeiroId ? `barbeiro_id=eq.${barbeiroId}` : null);
+
+    if (!usuarioId || !appointmentFilter) return;
+
+    // Never subscribe to every appointment in the business. Apart from being
+    // wasteful, that made a change from one customer refresh another customer's
+    // screen. The database policy is the security boundary; this filter keeps
+    // the browser state equally isolated.
+    const channel = supabase
+      .channel(`agenda-${usuarioId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'agendamentos', filter: appointmentFilter },
+        () => { void carregarDados().catch(() => undefined); },
+      )
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [barbeiroId, carregarDados, clienteId, tipoUsuario, usuarioId]);
 
   const feriadosPorData = useMemo(() => new Map(feriados.map((feriado) => [feriado.data, feriado.descricao])), [feriados]);
   const agendaHoje = useMemo(() => agendamentos.filter((item) => item.data === hoje), [agendamentos, hoje]);
@@ -423,6 +458,24 @@ export default function DashboardPage() {
   };
 
   if (loading) return <DashboardSkeleton />;
+
+  if (loadError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 text-zinc-100">
+        <section className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center shadow-2xl">
+          <CircleX className="mx-auto mb-4 text-red-400" size={32} />
+          <h1 className="text-xl font-black">Não foi possível abrir sua agenda</h1>
+          <p className="mt-2 text-sm text-zinc-400">{loadError}</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button onClick={recarregar} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-500">Tentar novamente</button>
+            <button onClick={() => { void supabase.auth.signOut(); router.replace('/'); }} className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-zinc-800">Sair</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!usuario) return <DashboardSkeleton />;
 
   const proximosCliente = agendamentos.filter((item) => item.data >= hoje && !['concluido', 'cancelado', 'nao_compareceu'].includes(item.status));
   const historicoCliente = agendamentos.filter((item) => !proximosCliente.some((proximo) => proximo.id === item.id));
