@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { brazilDateISO, formatDate, upcomingDays } from "@/lib/scheduling";
+import { brazilDateISO, formatDate, isAppointmentConfirmationAvailable, upcomingDays } from "@/lib/scheduling";
 
 test("uses São Paulo's calendar day instead of the browser's UTC day", () => {
   const utcDate = new Date("2026-08-21T02:30:00.000Z");
@@ -17,4 +17,10 @@ test("lists forthcoming days from São Paulo's calendar", () => {
 
 test("formats ISO calendar dates without shifting them a day", () => {
   assert.equal(formatDate("2026-08-21"), "21/08/2026");
+});
+
+test("only opens appointment confirmation during the preceding 24 hours in São Paulo", () => {
+  assert.equal(isAppointmentConfirmationAvailable("2026-08-22", "08:00:00", new Date("2026-08-21T11:00:00.000Z")), true);
+  assert.equal(isAppointmentConfirmationAvailable("2026-08-22", "08:00:00", new Date("2026-08-21T10:59:00.000Z")), false);
+  assert.equal(isAppointmentConfirmationAvailable("2026-08-22", "08:00:00", new Date("2026-08-22T11:01:00.000Z")), false);
 });

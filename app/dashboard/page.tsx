@@ -12,6 +12,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import {
   appointmentStatusLabels, brazilDateISO, displayTime, formatCurrency,
+  isAppointmentConfirmationAvailable,
   formatDate, formatWorkDays, upcomingDays, weekdayLabels, type DayChoice,
 } from '@/lib/scheduling';
 import type {
@@ -65,7 +66,8 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel }: {
   onConfirm?: () => void;
   onCancel?: () => void;
 }) {
-  const canConfirm = role === 'cliente' && item.status === 'agendado' && onConfirm;
+  const confirmationWindowOpen = isAppointmentConfirmationAvailable(item.data, item.horario);
+  const canConfirm = Boolean(role === 'cliente' && item.status === 'agendado' && confirmationWindowOpen && onConfirm);
   const canCancel = role === 'cliente' && ['agendado', 'confirmado'].includes(item.status) && onCancel;
   const digits = item.cliente_telefone?.replace(/\D/g, '') ?? '';
   const whatsapp = digits ? `https://wa.me/${digits.length <= 11 ? `55${digits}` : digits}` : '';
@@ -91,7 +93,8 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel }: {
         {role === 'barbeiro' && onStatusChange && <select value={item.status} onChange={(event) => onStatusChange(event.target.value as AppointmentStatus)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs font-bold text-zinc-200 outline-none focus:border-emerald-500">
           {statuses.map((status) => <option key={status} value={status}>{appointmentStatusLabels[status]}</option>)}
         </select>}
-        {canConfirm && <button onClick={onConfirm} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500">Confirmar presença</button>}
+        {role === 'cliente' && item.status === 'agendado' && !confirmationWindowOpen && <span className="text-xs font-medium text-zinc-500">Confirmação disponível 24h antes.</span>}
+        {canConfirm && <button onClick={onConfirm} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500">Confirmar horário</button>}
         {canCancel && <button onClick={onCancel} className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20">Cancelar</button>}
       </div>
     </article>
@@ -269,15 +272,15 @@ export default function DashboardPage() {
     if (error) return toast.error(error.message, { id: toastId });
     setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario(''); setHorariosDisponiveis([]);
     await carregarDados();
-    toast.success('Agendamento realizado! Confirme sua presença na lista abaixo.', { id: toastId });
+    toast.success('Agendamento realizado! A confirmação do horário abre 24h antes.', { id: toastId });
   };
 
   const confirmarAgendamento = async (id: number) => {
-    const toastId = toast.loading('Confirmando presença...');
+    const toastId = toast.loading('Confirmando horário...');
     const { error } = await supabase.rpc('confirmar_meu_agendamento', { p_agendamento_id: id });
     if (error) return toast.error(error.message, { id: toastId });
     await carregarDados();
-    toast.success('Presença confirmada!', { id: toastId });
+    toast.success('Horário confirmado!', { id: toastId });
   };
 
   const cancelarAgendamento = async (id: number) => {

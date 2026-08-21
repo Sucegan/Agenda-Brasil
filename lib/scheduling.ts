@@ -45,6 +45,24 @@ function brazilDateParts(date: Date) {
   return { year: Number(getPart("year")), month: Number(getPart("month")), day: Number(getPart("day")) };
 }
 
+function brazilDateTimeTimestamp(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return Date.UTC(
+    Number(getPart("year")), Number(getPart("month")) - 1, Number(getPart("day")),
+    Number(getPart("hour")), Number(getPart("minute")), Number(getPart("second")),
+  );
+}
+
 export function brazilDateISO(date = new Date()) {
   const { year, month, day } = brazilDateParts(date);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -72,4 +90,12 @@ export function upcomingDays(count: number, now = new Date()): DayChoice[] {
 
 export function displayTime(time: string) {
   return time.slice(0, 5);
+}
+
+export function isAppointmentConfirmationAvailable(date: string, time: string, now = new Date()) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const appointmentTimestamp = Date.UTC(year, month - 1, day, hour, minute);
+  const millisecondsUntilAppointment = appointmentTimestamp - brazilDateTimeTimestamp(now);
+  return millisecondsUntilAppointment >= 0 && millisecondsUntilAppointment <= 24 * 60 * 60 * 1000;
 }
