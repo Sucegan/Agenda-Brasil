@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import toast, { Toaster } from 'react-hot-toast'; // Importação das notificações bonitas
 
 export default function DashboardPage() {
   const [usuario, setUsuario] = useState<any>(null);
@@ -12,18 +13,16 @@ export default function DashboardPage() {
   const [servicos, setServicos] = useState<any[]>([]);
   const [agendamentos, setAgendamentos] = useState<any[]>([]);
 
-  // ==========================================
-  // ESTADOS DO NOVO FLUXO DE AGENDAMENTO (WIZARD)
-  // ==========================================
+  // Estados do Fluxo de Agendamento
   const [selectedBarbeiro, setSelectedBarbeiro] = useState<any>(null);
   const [selectedServico, setSelectedServico] = useState<any>(null);
   const [selectedData, setSelectedData] = useState<string>('');
   const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
   const [selectedHorario, setSelectedHorario] = useState<string>('');
   const [diasProximos, setDiasProximos] = useState<any[]>([]);
-  const [step, setStep] = useState<number>(1); // 1: Barbeiro, 2: Serviço, 3: Data/Hora
+  const [step, setStep] = useState<number>(1);
 
-  // Formulário de Serviços e Expediente (Visão Barbeiro)
+  // Estados do Barbeiro
   const [novoServicoNome, setNovoServicoNome] = useState('');
   const [novoServicoPrecoFormatado, setNovoServicoPrecoFormatado] = useState('');
   const [novoServicoDuracao, setNovoServicoDuracao] = useState('');
@@ -32,7 +31,6 @@ export default function DashboardPage() {
   const [diasTrabalho, setDiasTrabalho] = useState('Segunda a Sábado');
 
   const [loading, setLoading] = useState(true);
-  const [mensagem, setMensagem] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -40,7 +38,6 @@ export default function DashboardPage() {
     gerarDiasProximos();
   }, []);
 
-  // Gera os próximos 15 dias para o carrossel de datas
   const gerarDiasProximos = () => {
     const dias = [];
     const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
@@ -61,10 +58,7 @@ export default function DashboardPage() {
 
   const carregarDados = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      router.push('/');
-      return;
-    }
+    if (!session) return router.push('/');
 
     const { data: userData } = await supabase.from('usuarios').select('*').eq('id', session.user.id).single();
     setUsuario(userData);
@@ -114,13 +108,9 @@ export default function DashboardPage() {
     if (data) setAgendamentos(data);
   };
 
-  // ==========================================
-  // MOTOR INTELIGENTE DE HORÁRIOS
-  // ==========================================
   const calcularHorariosDisponiveis = async (dataSelecionada: string) => {
     if (!selectedBarbeiro || !selectedServico) return;
     
-    // Busca os agendamentos do barbeiro neste dia específico para não sobrepor horários
     const { data: agendaDoDia } = await supabase
       .from('agendamentos')
       .select('horario, servicos(duracao), status')
@@ -143,7 +133,6 @@ export default function DashboardPage() {
     const fimExpediente = converterParaMinutos(selectedBarbeiro.horario_fim || '18:00');
     const duracaoServico = selectedServico.duracao;
     
-   // Converte os agendamentos ocupados em blocos de minutos [inicio, fim]
     const bloqueios = (agendaDoDia || []).map((ag: any) => {
       const inicio = converterParaMinutos(ag.horario);
       const duracao = Array.isArray(ag.servicos) ? ag.servicos[0]?.duracao : ag.servicos?.duracao;
@@ -152,14 +141,22 @@ export default function DashboardPage() {
     });
 
     let horariosValidos = [];
-    // Pula de 30 em 30 minutos (ou pode ser 15 em 15)
+    
+    // PEGANDO O HORÁRIO ATUAL PARA BLOQUEAR PASSADO
+    const agora = new Date();
+    // Ajuste seguro para pegar o fuso horário local
+    const dataHojeISO = new Date(agora.getTime() - (agora.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const horaAtualMinutos = agora.getHours() * 60 + agora.getMinutes();
+
     for (let tempoAtual = inicioExpediente; (tempoAtual + duracaoServico) <= fimExpediente; tempoAtual += 30) {
-      const fimDoSlot = tempoAtual + duracaoServico;
       
-      // Checa se este horário sobrepõe algum horário já agendado
-      const temConflito = bloqueios.some(bloqueio => {
-        return (tempoAtual < bloqueio.fim && fimDoSlot > bloqueio.inicio);
-      });
+      // FUNÇÃO 1: Bloqueia horários que já passaram se for hoje
+      if (dataSelecionada === dataHojeISO && tempoAtual <= horaAtualMinutos) {
+        continue;
+      }
+
+      const fimDoSlot = tempoAtual + duracaoServico;
+      const temConflito = bloqueios.some(bloqueio => (tempoAtual < bloqueio.fim && fimDoSlot > bloqueio.inicio));
 
       if (!temConflito) {
         horariosValidos.push(converterParaHora(tempoAtual));
@@ -182,33 +179,53 @@ export default function DashboardPage() {
   };
 
   const handleAgendar = async () => {
-    setMensagem('');
     if (!clienteId || !selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) {
-      setMensagem('Preencha todos os campos do agendamento.');
+      toast.error('Preencha todos os campos do agendamento.');
       return;
     }
+
+    const toastId = toast.loading('Processando agendamento...');
 
     const { error } = await supabase.from('agendamentos').insert([
       { cliente_id: clienteId, barbeiro_id: selectedBarbeiro.id, servico_id: selectedServico.id, data: selectedData, horario: `${selectedHorario}:00`, status: 'agendado' },
     ]);
 
     if (error) {
-      setMensagem(`Erro ao agendar: ${error.message}`);
+      toast.error(`Erro ao agendar: ${error.message}`, { id: toastId });
     } else {
-      setMensagem('Agendamento realizado com sucesso!');
+      toast.success('Agendamento realizado com sucesso! 🎉', { id: toastId });
       setTimeout(() => {
-        setStep(1);
-        setSelectedBarbeiro(null);
-        setSelectedServico(null);
-        setSelectedData('');
-        setSelectedHorario('');
-        setMensagem('');
+        setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario('');
         carregarAgendamentosCliente(clienteId);
-      }, 2000);
+      }, 1000);
     }
   };
 
-  // Funções do Barbeiro
+  // FUNÇÃO 3: Cancelamento pelo Próprio Cliente
+  const cancelarAgendamentoCliente = async (id: number, data: string, horario: string) => {
+    const [ano, mes, dia] = data.split('-');
+    const [hora, min] = horario.split(':');
+    const dataAgendamento = new Date(Number(ano), Number(mes) - 1, Number(dia), Number(hora), Number(min));
+    const agora = new Date();
+    const diffHoras = (dataAgendamento.getTime() - agora.getTime()) / (1000 * 60 * 60);
+
+    if (diffHoras > 0 && diffHoras < 2) {
+      toast.error('Não é possível cancelar com menos de 2 horas de antecedência. Ligue para a barbearia.');
+      return;
+    }
+
+    if (confirm('Deseja realmente cancelar este agendamento?')) {
+      const toastId = toast.loading('Cancelando...');
+      const { error } = await supabase.from('agendamentos').update({ status: 'cancelado' }).eq('id', id);
+      if (error) {
+        toast.error('Erro ao cancelar.', { id: toastId });
+      } else {
+        toast.success('Agendamento cancelado.', { id: toastId });
+        if (clienteId) carregarAgendamentosCliente(clienteId);
+      }
+    }
+  };
+
   const handlePrecoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(/\D/g, '');
     if (!valor) return setNovoServicoPrecoFormatado('');
@@ -218,22 +235,31 @@ export default function DashboardPage() {
   const handleSalvarExpediente = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!barbeiroId) return;
+    const toastId = toast.loading('Salvando horários...');
     const { error } = await supabase.from('barbeiros').update({ horario_inicio: horarioInicio, horario_fim: horarioFim, dias_trabalho: diasTrabalho }).eq('id', barbeiroId);
-    if (error) alert(`Erro ao salvar expediente: ${error.message}`);
-    else alert('Horários e dias de atendimento atualizados com sucesso!');
+    if (error) toast.error('Erro ao salvar expediente.', { id: toastId });
+    else toast.success('Expediente atualizado!', { id: toastId });
   };
 
   const atualizarStatus = async (agendamentoId: number, novoStatus: string) => {
     await supabase.from('agendamentos').update({ status: novoStatus }).eq('id', agendamentoId);
+    toast.success(`Status alterado para ${novoStatus}`);
     if (barbeiroId) carregarAgendamentosBarbeiro(barbeiroId);
   };
 
   const handleAdicionarServico = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barbeiroId || !novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) return alert('Preencha todos os campos.');
+    if (!barbeiroId || !novoServicoNome || !novoServicoPrecoFormatado || !novoServicoDuracao) return toast.error('Preencha todos os campos.');
+    
     const precoLimpo = parseFloat(novoServicoPrecoFormatado.replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+    const toastId = toast.loading('Salvando serviço...');
+    
     const { error } = await supabase.from('servicos').insert([{ nome: novoServicoNome, preco: precoLimpo, duracao: parseInt(novoServicoDuracao), barbeiro_id: barbeiroId }]);
-    if (!error) {
+    
+    if (error) {
+      toast.error('Erro ao salvar.', { id: toastId });
+    } else {
+      toast.success('Serviço adicionado!', { id: toastId });
       setNovoServicoNome(''); setNovoServicoPrecoFormatado(''); setNovoServicoDuracao('');
       const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
       if (data) setServicos(data);
@@ -241,8 +267,9 @@ export default function DashboardPage() {
   };
 
   const handleExcluirServico = async (servicoId: number) => {
-    if (!confirm('Excluir este serviço?')) return;
+    if (!confirm('Deseja excluir este serviço?')) return;
     await supabase.from('servicos').delete().eq('id', servicoId);
+    toast.success('Serviço excluído.');
     const { data } = await supabase.from('servicos').select('*').eq('barbeiro_id', barbeiroId).order('nome');
     if (data) setServicos(data);
   };
@@ -252,12 +279,20 @@ export default function DashboardPage() {
     router.push('/');
   };
 
+  // FUNÇÃO 2: Formatação de WhatsApp
+  const formatarZap = (numero: string) => {
+    const limpo = numero.replace(/\D/g, '');
+    return `https://wa.me/55${limpo}`;
+  };
+
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-zinc-950 text-white"><p>Carregando painel...</p></main>;
 
   const servicosDoBarbeiroSelecionado = servicos.filter((s) => s.barbeiro_id === selectedBarbeiro?.id);
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-6 text-white font-sans">
+    <main className="min-h-screen bg-zinc-950 p-6 text-white font-sans relative">
+      <Toaster position="top-center" reverseOrder={false} /> {/* CONTÊINER DAS NOTIFICAÇÕES */}
+      
       <header className="mx-auto flex max-w-4xl items-center justify-between border-b border-zinc-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Agenda Brasil</h1>
@@ -270,9 +305,6 @@ export default function DashboardPage() {
 
       <section className="mx-auto mt-8 max-w-4xl space-y-6">
         
-        {/* ========================================================
-            VISÃO DO CLIENTE (O NOVO FLUXO STEP-BY-STEP)
-        ======================================================== */}
         {usuario?.tipo === 'cliente' && (
           <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl relative overflow-hidden">
@@ -285,7 +317,6 @@ export default function DashboardPage() {
                  )}
               </div>
 
-              {/* PASSO 1: ESCOLHER O BARBEIRO */}
               {step === 1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                   <p className="mb-4 text-sm font-medium text-zinc-300">Selecione o profissional:</p>
@@ -305,7 +336,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* PASSO 2: ESCOLHER O SERVIÇO */}
               {step === 2 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
@@ -321,14 +351,11 @@ export default function DashboardPage() {
                         <span className="text-[10px] opacity-70 mt-1">({servico.duracao} min)</span>
                       </button>
                     ))}
-                    {servicosDoBarbeiroSelecionado.length === 0 && (
-                      <p className="col-span-full text-sm text-zinc-500">Nenhum serviço cadastrado para este profissional.</p>
-                    )}
+                    {servicosDoBarbeiroSelecionado.length === 0 && <p className="col-span-full text-sm text-zinc-500">Nenhum serviço cadastrado.</p>}
                   </div>
                 </div>
               )}
 
-              {/* PASSO 3: ESCOLHER DATA E HORA */}
               {step === 3 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="mb-6 flex gap-2 flex-wrap pb-2">
@@ -336,11 +363,8 @@ export default function DashboardPage() {
                     <button onClick={() => setStep(2)} className="shrink-0 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-500 border border-amber-500/30 hover:bg-amber-500/40">Serviço: <b className="text-white">{selectedServico.nome}</b></button>
                   </div>
 
-                  <p className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300 bg-zinc-800 p-3 rounded-lg border border-zinc-700 w-max">
-                    📅 Qual dia você deseja agendar?
-                  </p>
+                  <p className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-300 bg-zinc-800 p-3 rounded-lg border border-zinc-700 w-max">📅 Qual dia você deseja agendar?</p>
                   
-                  {/* Carrossel Horizontal de Datas */}
                   <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
                     {diasProximos.map((diaInfo) => (
                       <button 
@@ -359,7 +383,6 @@ export default function DashboardPage() {
                     ))}
                   </div>
 
-                  {/* Seleção de Horários (Aparece após escolher o dia) */}
                   {selectedData && (
                     <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       {horariosDisponiveis.length > 0 ? (
@@ -367,36 +390,18 @@ export default function DashboardPage() {
                           <p className="mb-3 text-sm font-medium text-zinc-300">Selecione o horário:</p>
                           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-6">
                             {horariosDisponiveis.map(hora => (
-                              <button 
-                                key={hora} 
-                                onClick={() => setSelectedHorario(hora)}
-                                className={`py-2 rounded-lg text-sm font-bold border transition-all ${
-                                  selectedHorario === hora 
-                                    ? 'bg-emerald-500 border-emerald-400 text-zinc-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
-                                    : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
-                                }`}
-                              >
-                                {hora}
-                              </button>
+                              <button key={hora} onClick={() => setSelectedHorario(hora)} className={`py-2 rounded-lg text-sm font-bold border transition-all ${selectedHorario === hora ? 'bg-emerald-500 border-emerald-400 text-zinc-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'}`}>{hora}</button>
                             ))}
                           </div>
-                          <button onClick={handleAgendar} disabled={!selectedHorario} className="w-full rounded-xl bg-emerald-600 py-4 font-bold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                            Confirmar Agendamento
-                          </button>
+                          <button onClick={handleAgendar} disabled={!selectedHorario} className="w-full rounded-xl bg-emerald-600 py-4 font-bold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirmar Agendamento</button>
                         </>
                       ) : (
                         <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-4 text-center mt-2">
-                          <p className="text-sm font-medium text-red-400 mb-4">
-                            🕒 Esse profissional não possui mais horários disponíveis para esse serviço nesta data.
-                          </p>
-                          <div className="flex gap-2 justify-center">
-                            <button onClick={() => setSelectedData('')} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-zinc-950 hover:bg-amber-400 transition-colors">Tentar outra data</button>
-                          </div>
+                          <p className="text-sm font-medium text-red-400 mb-4">🕒 Esse profissional não possui mais horários disponíveis.</p>
                         </div>
                       )}
                     </div>
                   )}
-                  {mensagem && <p className="mt-4 rounded-lg bg-emerald-950/50 border border-emerald-900/50 p-3 text-center text-sm font-medium text-emerald-400">{mensagem}</p>}
                 </div>
               )}
             </div>
@@ -408,7 +413,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   {agendamentos.map((item) => (
-                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
+                    <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
                         <p className="font-bold text-white">{item.servicos?.nome}</p>
                         <p className="text-sm text-zinc-400">Com: {item.barbeiros?.nome}</p>
@@ -417,13 +422,25 @@ export default function DashboardPage() {
                           <span className="bg-amber-500/10 px-2 py-1 rounded">🕒 {item.horario?.slice(0, 5)}</span>
                         </div>
                       </div>
-                      <span className={`self-start sm:self-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider border ${
-                        item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' :
-                        item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' :
-                        'bg-blue-950/50 text-blue-400 border-blue-900/50'
-                      }`}>
-                        {item.status}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`self-start sm:self-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider border ${
+                          item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' :
+                          item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' :
+                          'bg-blue-950/50 text-blue-400 border-blue-900/50'
+                        }`}>
+                          {item.status}
+                        </span>
+                        
+                        {/* Botão Cancelar para o Cliente */}
+                        {(item.status === 'agendado' || item.status === 'confirmado') && (
+                          <button 
+                            onClick={() => cancelarAgendamentoCliente(item.id, item.data, item.horario)}
+                            className="text-[11px] text-red-400 hover:text-red-300 underline mt-1"
+                          >
+                            Cancelar Agendamento
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -432,9 +449,6 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ========================================================
-            VISÃO DO BARBEIRO (Mantida e Otimizada)
-        ======================================================== */}
         {usuario?.tipo === 'barbeiro' && (
           <>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
@@ -454,13 +468,25 @@ export default function DashboardPage() {
                   {agendamentos.map((item) => (
                     <div key={item.id} className="flex flex-col sm:flex-row justify-between rounded-xl border border-zinc-800 bg-zinc-800/40 p-4 gap-4">
                       <div>
-                        <p className="font-bold text-white text-xl">{item.horario?.slice(0, 5)}</p>
-                        <p className="text-sm text-zinc-300">{item.clientes?.nome} <span className="text-xs text-emerald-500 ml-2">📱 {item.clientes?.telefone}</span></p>
+                        <div className="flex items-center gap-3">
+                           <p className="font-bold text-white text-xl">{item.horario?.slice(0, 5)}</p>
+                           {/* Botão WhatsApp */}
+                           {item.clientes?.telefone && (
+                             <a 
+                               href={`${formatarZap(item.clientes.telefone)}?text=Olá ${item.clientes.nome}, confirmando seu agendamento para hoje às ${item.horario?.slice(0, 5)}!`} 
+                               target="_blank" rel="noopener noreferrer"
+                               className="bg-[#25D366]/20 text-[#25D366] text-[10px] font-bold px-2 py-1 rounded flex items-center hover:bg-[#25D366]/30 transition"
+                             >
+                               💬 Chamar no Whats
+                             </a>
+                           )}
+                        </div>
+                        <p className="text-sm text-zinc-300 mt-2">{item.clientes?.nome} <span className="text-xs text-emerald-500 ml-2">{item.clientes?.telefone}</span></p>
                         <p className="text-xs text-zinc-500 mt-1">{item.servicos?.nome} ({item.servicos?.duracao} min)</p>
                       </div>
                       <div className="flex flex-col items-end justify-between">
                         <select value={item.status} onChange={(e) => atualizarStatus(item.id, e.target.value)} className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider border cursor-pointer focus:outline-none transition-colors ${item.status === 'concluído' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-900/50' : item.status === 'cancelado' ? 'bg-red-950/50 text-red-400 border-red-900/50' : 'bg-blue-950/50 text-blue-400 border-blue-900/50'}`}>
-                          <option value="agendado">Agendado</option><option value="concluído">Concluído</option><option value="cancelado">Cancelado</option>
+                          <option value="agendado">Agendado</option><option value="confirmado">Confirmado</option><option value="concluído">Concluído</option><option value="cancelado">Cancelado</option>
                         </select>
                         <p className="text-xs text-zinc-500 mt-2 font-medium">{item.data.split('-').reverse().join('/')}</p>
                       </div>
