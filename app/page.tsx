@@ -51,6 +51,7 @@ function LoginForm() {
           email, 
           password: senha,
           options: { 
+            emailRedirectTo: `${window.location.origin}/dashboard`,
             data: { 
               nome,
               telefone,
@@ -65,6 +66,9 @@ function LoginForm() {
         if (authError) {
           if (authError.message.includes('already registered')) {
             throw new Error('Este e-mail já está cadastrado. Faça login.');
+          }
+          if (/(confirmation email|email.*(?:send|authorized)|rate limit)/i.test(authError.message)) {
+            throw new Error('Não foi possível enviar o e-mail de confirmação. O serviço de e-mail da barbearia precisa ser configurado.');
           }
           throw new Error(authError.message);
         }
