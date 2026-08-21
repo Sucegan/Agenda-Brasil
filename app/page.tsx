@@ -1,12 +1,12 @@
 'use client';
 
 import { useSyncExternalStore, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
 
 const subscribeToNothing = () => () => undefined;
+const getSupabase = async () => (await import('@/lib/supabase')).supabase;
 
 function useInviteParams() {
   const search = useSyncExternalStore(
@@ -48,6 +48,7 @@ function LoginForm() {
     const toastId = toast.loading('Processando...');
 
     try {
+      const supabase = await getSupabase();
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
         if (error) throw new Error('E-mail ou senha incorretos.');
@@ -105,6 +106,7 @@ function LoginForm() {
     }
 
     const toastId = toast.loading('Enviando link de recuperação...');
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/redefinir-senha`,
     });
