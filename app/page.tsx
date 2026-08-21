@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import toast, { Toaster } from 'react-hot-toast';
 import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
 
-// Componente interno que consome os parâmetros de busca
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,23 +37,37 @@ function LoginForm() {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
         if (error) throw new Error('E-mail ou senha incorretos.');
+        
+        toast.success('Login realizado!', { id: toastId });
         router.push('/dashboard');
       } else {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email, password: senha,
-          options: { data: { display_name: nome, phone: telefone } }
-        });
-        if (authError) throw new Error(authError.message);
+        if (!nome || !telefone) throw new Error('Preencha todos os campos.');
+        if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
 
-        if (authData.user) {
-          const { error: dbError } = await supabase.from('usuarios').insert([{
-            id: authData.user.id, nome, telefone,
-            tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente'
-          }]);
-          if (dbError) throw new Error('Erro ao salvar no banco.');
-          toast.success('Conta criada!', { id: toastId });
-          router.push('/dashboard');
+        // O Supabase Auth vai criar o usuário e a Trigger vai preencher a tabela usuarios sozinha
+        const { error: authError } = await supabase.auth.signUp({
+          email, 
+          password: senha,
+          options: { 
+            data: { 
+              display_name: nome, 
+              phone: telefone,
+              tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente'
+            } 
+          }
+        });
+        
+        if (authError) {
+          if (authError.message.includes('already registered')) {
+            throw new Error('Este e-mail já está cadastrado. Faça login.');
+          }
+          throw new Error(authError.message);
         }
+
+        toast.success('Conta criada! Verifique seu e-mail para confirmar.', { id: toastId });
+        // Se preferir redirecionar para uma tela de aviso de e-mail, pode criar. 
+        // Por ora, mandamos para o login:
+        setTimeout(() => router.push('/'), 2000);
       }
     } catch (err: any) { 
       toast.error(err.message, { id: toastId }); 
@@ -137,7 +150,6 @@ function LoginForm() {
   );
 }
 
-// Componente principal que engloba tudo com o Suspense exigido pelo Next.js
 export default function LoginPage() {
   return (
     <main className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 relative selection:bg-emerald-500/30">
