@@ -20,7 +20,10 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data: { claims } } = await supabase.auth.getClaims();
+  // Proteção contra 'data' nulo quando não há sessão ativa
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+
   const isDashboard = request.nextUrl.pathname.startsWith("/dashboard");
 
   if (isDashboard && !claims?.sub) {
