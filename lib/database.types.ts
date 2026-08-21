@@ -39,9 +39,9 @@ export interface Database {
         Relationships: [Relationship];
       };
       barbeiros: {
-        Row: { id: number; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; dias_trabalho: BusinessDay[] };
-        Insert: { id?: never; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; dias_trabalho?: BusinessDay[] };
-        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; dias_trabalho?: BusinessDay[] };
+        Row: { id: number; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[] };
+        Insert: { id?: never; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
+        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
         Relationships: [Relationship];
       };
       clientes: {
