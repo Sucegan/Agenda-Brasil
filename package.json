@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test tests/scheduling.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:db": "supabase test db",
+    "test:integration": "tsx tests/integration/security-check.ts",
+    "test:e2e": "npm run build && playwright test"
   },
   "browserslist": [
     "chrome >= 64",
@@ -21,7 +24,8 @@
     "not op_mini all"
   ],
   "overrides": {
-    "sharp": "0.35.0"
+    "sharp": "0.35.0",
+    "postcss": "$postcss"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -30,16 +34,19 @@
     "next": "15.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-hot-toast": "^2.6.0"
+    "react-hot-toast": "^2.6.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
     "eslint-config-next": "15.5.23",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.26",
     "postcss-color-functional-notation": "^8.0.8",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.23.12",

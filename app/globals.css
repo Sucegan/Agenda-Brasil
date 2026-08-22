@@ -113,3 +113,33 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-report,
+  .print-report * {
+    visibility: visible;
+  }
+
+  .print-report {
+    position: absolute;
+    inset: 0;
+    border: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+  }
+
+  .print-report button,
+  .print-report input {
+    display: none !important;
+  }
+}

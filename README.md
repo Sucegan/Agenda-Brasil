@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agenda Brasil
 
-## Getting Started
+Aplicação web/PWA de agendamento para barbearias, construída com Next.js 15, Supabase e Tailwind CSS. Inclui agenda de clientes e profissionais, link público sem senha, fila de espera, sinal por Pix, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
 
-First, run the development server:
+## Desenvolvimento
+
+1. Copie `.env.example` para `.env.local` e preencha pelo menos as variáveis públicas do Supabase.
+2. Instale dependências com `npm install`.
+3. Execute `npm run dev` e abra `http://localhost:3000`.
+
+## Banco de dados
+
+As mudanças ficam em `supabase/migrations`. Antes de publicar:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx supabase db push --dry-run
+npx supabase db push
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Os testes de RLS usam pgTAP e um ambiente Supabase local:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npx supabase start
+npm run test:db
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Mensagens automáticas
 
-## Learn More
+A rota `/api/cron/notifications` processa a tabela `notificacoes`. Em Vercel, `vercel.json` agenda essa rota a cada dez minutos. Outros provedores podem chamar a mesma rota com `Authorization: Bearer $CRON_SECRET`.
 
-To learn more about Next.js, take a look at the following resources:
+- E-mail: configure uma conta Resend, domínio validado, `RESEND_API_KEY` e `NOTIFICATION_EMAIL_FROM`.
+- WhatsApp: configure Meta WhatsApp Cloud API, `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`. Para mensagens iniciadas pelo negócio, cadastre um template aprovado e informe `WHATSAPP_TEMPLATE_NAME`.
+- Push: gere um par VAPID, configure as chaves e habilite push no painel da barbearia e do cliente.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Sem essas credenciais a agenda continua funcionando; os itens permanecem registrados para diagnóstico e não são enviados.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Segurança e produção
 
-## Deploy on Vercel
+- Ative confirmação de e-mail, CAPTCHA do Cloudflare Turnstile, SMTP próprio e MFA nos administradores do Supabase.
+- Configure `SUPABASE_SERVICE_ROLE_KEY` apenas no servidor. Nunca use prefixo `NEXT_PUBLIC_` nessa chave.
+- Configure `NEXT_PUBLIC_SITE_URL` com o domínio HTTPS definitivo.
+- Revise os textos de privacidade e termos com o responsável legal do estabelecimento.
+- Agende backups e valide restauração antes de receber dados reais.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Qualidade
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm test
+npm run build
+npm run test:e2e
+npm audit
+```
+
+Os testes E2E cobrem Chromium, Firefox, WebKit, Chrome móvel e WebKit móvel. A execução exige os navegadores do Playwright (`npx playwright install`).

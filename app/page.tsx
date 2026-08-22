@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
+import { CalendarDays, Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
+import { Captcha } from '@/components/captcha';
 
 const subscribeToNothing = () => () => undefined;
 const getSupabase = async () => (await import('@/lib/supabase')).supabase;
@@ -30,6 +32,9 @@ function LoginForm() {
   const [telefone, setTelefone] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [website, setWebsite] = useState('');
 
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ''); 
@@ -58,8 +63,10 @@ function LoginForm() {
         window.location.replace('/dashboard');
         return;
       } else {
+        if (website) throw new Error('Não foi possível concluir o cadastro.');
         if (!nome || !telefone) throw new Error('Preencha todos os campos.');
         if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
+        if (!termsAccepted) throw new Error('Aceite os termos de uso e a política de privacidade.');
         if (isConviteBarbeiro && !conviteBarbeiro) throw new Error('Este convite de barbeiro é inválido. Peça um novo link ao responsável.');
 
         // O Supabase Auth vai criar o usuário e a Trigger vai preencher a tabela usuarios sozinha
@@ -68,6 +75,7 @@ function LoginForm() {
           password: senha,
           options: { 
             emailRedirectTo: `${window.location.origin}/dashboard`,
+            captchaToken: captchaToken || undefined,
             data: { 
               nome,
               telefone,
@@ -75,6 +83,7 @@ function LoginForm() {
               display_name: nome,
               tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente',
               convite_barbeiro: conviteBarbeiro,
+              termos_aceitos: true,
             } 
           }
         });
@@ -148,6 +157,7 @@ function LoginForm() {
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Site<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label>
         {!isLogin && (
           <div className="signup-fields space-y-4">
             <div className="relative">
@@ -175,6 +185,11 @@ function LoginForm() {
           </div>
         </div>
 
+        {!isLogin && <>
+          <label className="flex items-start gap-2 text-xs text-zinc-400"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href="/termos" className="text-emerald-400 underline">termos de uso</Link> e a <Link href="/privacidade" className="text-emerald-400 underline">política de privacidade</Link>.</span></label>
+          <Captcha onToken={setCaptchaToken} />
+        </>}
+
         <div className="relative">
           <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Senha</label>
           <div className="relative">
@@ -198,11 +213,13 @@ function LoginForm() {
       </form>
 
       {!isConviteBarbeiro && (
-        <div className="mt-6 text-center">
+        <div className="mt-6 space-y-3 text-center">
+          <Link href="/agendar" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Agendar sem senha</Link>
           <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>
           </button>
+          <p className="text-[11px] text-zinc-600"><Link href="/privacidade" className="hover:text-zinc-400">Privacidade</Link> · <Link href="/termos" className="hover:text-zinc-400">Termos</Link></p>
         </div>
       )}
     </div>
