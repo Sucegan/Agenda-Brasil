@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   title: "Agenda Brasil | Agendamentos Online",
   description: "Agendamentos online simples e profissionais, com agenda, lembretes, fila de espera e gestão para barbearias.",
   keywords: ["agendamento online", "agenda para barbearia", "barbearia", "reservas online", "Agenda Brasil"],
+  authors: [{ name: "Sucegan Tech" }],
+  creator: "Sucegan Tech",
+  publisher: "Sucegan Tech",
+  other: { copyright: "© 2026 Sucegan Tech. Todos os direitos reservados." },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

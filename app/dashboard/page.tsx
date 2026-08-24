@@ -14,6 +14,7 @@ import { CommunicationPreferences } from '@/components/communication-preferences
 import { ReportTools } from '@/components/report-tools';
 import { NotificationHealth } from '@/components/notification-health';
 import { ReviewLoyalty } from '@/components/review-loyalty';
+import { SiteRights } from '@/components/site-rights';
 import { ClientWaitlist, JoinWaitlistButton, ProfessionalWaitlist } from '@/components/waitlist-sections';
 import {
   appointmentStatusLabels, brazilDateISO, displayTime, formatCurrency,
@@ -627,6 +628,7 @@ export default function DashboardPage() {
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={20} /> Próximos agendamentos</h2><div className="space-y-3">{agendaFutura.length ? agendaFutura.map((item) => <AppointmentItem key={item.id} item={item} role="barbeiro" onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Não há próximos agendamentos.</p>}</div></section>
           </div>
         )}
+        <SiteRights className="border-t border-zinc-900 pt-5" />
       </section>
     </main>
   );

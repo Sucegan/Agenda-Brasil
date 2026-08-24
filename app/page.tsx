@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { SiteRights } from '@/components/site-rights';
 import { useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { CalendarDays, Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
@@ -231,6 +232,7 @@ export default function LoginPage() {
     <main className="app-screen login-background relative flex flex-col items-center justify-center px-4 py-6 selection:bg-emerald-500/30">
       <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
       <LoginForm />
+      <SiteRights className="mt-6" />
     </main>
   );
 }
