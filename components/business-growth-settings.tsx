@@ -7,7 +7,20 @@ import { supabase } from '@/lib/supabase';
 import type { BusinessSettings } from '@/lib/database.types';
 
 async function copy(value: string) {
-  try { await navigator.clipboard.writeText(value); return true; } catch { return false; }
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(value); return true; } catch { /* Safari fallback below. */ }
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  const copied = document.execCommand('copy');
+  textarea.remove();
+  return copied;
 }
 
 export function BusinessGrowthSettings({ business, onUpdated }: { business: BusinessSettings; onUpdated: () => Promise<void> }) {
@@ -31,26 +44,37 @@ export function BusinessGrowthSettings({ business, onUpdated }: { business: Busi
   const publicUrl = typeof window === 'undefined' ? `/agendar?estabelecimento=${slug}` : `${window.location.origin}/agendar?estabelecimento=${slug}`;
 
   const save = async () => {
+    const depositNumber = Number(deposit);
+    const cancellationNumber = Number(cancellationHours);
+    const noShowsNumber = Number(noShows);
+    const blockDaysNumber = Number(blockDays);
+    const retentionNumber = Number(retentionMonths);
+    if (!Number.isFinite(depositNumber) || depositNumber < 0 || depositNumber > 100) return toast.error('Informe um sinal entre 0% e 100%.');
+    if (depositNumber > 0 && (!pixKey.trim() || !pixOwner.trim())) return toast.error('Informe a chave e o beneficiário Pix para cobrar sinal.');
+    if (!Number.isInteger(cancellationNumber) || cancellationNumber < 0 || cancellationNumber > 168) return toast.error('Informe um prazo de cancelamento entre 0 e 168 horas.');
+    if (!Number.isInteger(noShowsNumber) || noShowsNumber < 0 || noShowsNumber > 20) return toast.error('Informe um limite de faltas entre 0 e 20.');
+    if (!Number.isInteger(blockDaysNumber) || blockDaysNumber < 1 || blockDaysNumber > 365) return toast.error('Informe um bloqueio entre 1 e 365 dias.');
+    if (!Number.isInteger(retentionNumber) || retentionNumber < 1 || retentionNumber > 120) return toast.error('Informe uma retenção entre 1 e 120 meses.');
     setSaving(true);
     const [{ error }, { error: legalError }] = await Promise.all([
       supabase.rpc('atualizar_configuracoes_avancadas', {
         p_slug: slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
         p_agendamento_publico: publicBooking,
-        p_cancelamento_horas: Number(cancellationHours),
-        p_sinal_percentual: Number(deposit),
+        p_cancelamento_horas: cancellationNumber,
+        p_sinal_percentual: depositNumber,
         p_pix_chave: pixKey,
         p_pix_beneficiario: pixOwner,
         p_lembrete_email: email,
         p_lembrete_whatsapp: whatsapp,
         p_lembrete_push: false,
-        p_bloquear_apos_faltas: Number(noShows),
-        p_dias_bloqueio: Number(blockDays),
+        p_bloquear_apos_faltas: noShowsNumber,
+        p_dias_bloqueio: blockDaysNumber,
       }),
       supabase.rpc('atualizar_informacoes_legais', {
         p_responsavel_legal: legalOwner,
         p_documento_legal: legalDocument,
         p_email_privacidade: privacyEmail,
-        p_prazo_retencao_meses: Number(retentionMonths),
+        p_prazo_retencao_meses: retentionNumber,
       }),
     ]);
     setSaving(false);

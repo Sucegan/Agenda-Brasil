@@ -27,6 +27,13 @@ import type {
 } from '@/lib/database.types';
 
 const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'cancelado', 'nao_compareceu'];
+const paymentStatusLabels: Record<PaymentStatus, string> = {
+  nao_exigido: 'não exigido',
+  pendente: 'aguardando pagamento',
+  informado: 'pagamento informado',
+  pago: 'pagamento confirmado',
+  dispensado: 'pagamento dispensado',
+};
 const DATA_LOAD_TIMEOUT_MS = 15_000;
 
 function withTimeout<T>(operation: Promise<T>, milliseconds: number, message: string) {
@@ -125,7 +132,7 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel, onIn
           {role === 'barbeiro' ? <>{item.servico_nome} · {formatCurrency(Number(item.servico_preco ?? 0))}</> : <>Profissional: {item.barbeiro_nome} · {formatCurrency(Number(item.servico_preco ?? 0))}</>}
         </p>
         <p className="mt-1 text-xs font-medium text-zinc-500">{formatDate(item.data)} · {item.servico_duracao ?? 0} min</p>
-        {Number(item.sinal_valor) > 0 && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200"><b>Sinal: {formatCurrency(Number(item.sinal_valor))}</b> · {item.sinal_status.replace('_', ' ')}{role === 'cliente' && pixKey && item.sinal_status === 'pendente' && <div className="mt-2 flex flex-wrap gap-2"><button onClick={async () => { const done = await copyText(pixKey); toast[done ? 'success' : 'error'](done ? `Chave Pix copiada${pixOwner ? ` — ${pixOwner}` : ''}.` : 'Não foi possível copiar a chave.'); }} className="rounded-lg border border-amber-500/30 px-2.5 py-1.5 font-bold">Copiar Pix</button>{onInformPayment && <button onClick={onInformPayment} className="rounded-lg bg-amber-500 px-2.5 py-1.5 font-bold text-zinc-950">Já paguei</button>}</div>}</div>}
+        {Number(item.sinal_valor) > 0 && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200"><b>Sinal: {formatCurrency(Number(item.sinal_valor))}</b> · {paymentStatusLabels[item.sinal_status]}{role === 'cliente' && pixKey && item.sinal_status === 'pendente' && <div className="mt-2 flex flex-wrap gap-2"><button onClick={async () => { const done = await copyText(pixKey); toast[done ? 'success' : 'error'](done ? `Chave Pix copiada${pixOwner ? ` — ${pixOwner}` : ''}.` : 'Não foi possível copiar a chave.'); }} className="rounded-lg border border-amber-500/30 px-2.5 py-1.5 font-bold">Copiar Pix</button>{onInformPayment && <button onClick={onInformPayment} className="rounded-lg bg-amber-500 px-2.5 py-1.5 font-bold text-zinc-950">Já paguei</button>}</div>}</div>}
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {role === 'barbeiro' && whatsapp && (
@@ -195,17 +202,19 @@ export default function DashboardPage() {
   const hoje = brazilDateISO();
 
   const carregarDados = useCallback(async () => {
-    const { data: { session }, error: authError } = await withTimeout(
-      supabase.auth.getSession(),
+    const { data: { user }, error: authError } = await withTimeout(
+      supabase.auth.getUser(),
       DATA_LOAD_TIMEOUT_MS,
       'Sua sessão demorou para responder. Verifique a conexão e tente novamente.',
     );
-    if (!session) {
-      window.location.replace('/');
+    if (authError || !user) {
+      // Remove only this browser's invalid session. Without this cleanup,
+      // Safari can keep presenting the stale cookie to middleware and loop
+      // between the login and dashboard pages.
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      window.location.replace('/?motivo=sessao-expirada');
       return;
     }
-    if (authError) throw new Error('Não foi possível ler sua sessão. Entre novamente.');
-    const user = session.user;
     setEmail(user.email ?? '');
     const [{ data: perfil, error: perfilError }, { data: configuracoes, error: configError }, { data: feriadosData, error: feriadosError }] = await withTimeout(
       Promise.all([

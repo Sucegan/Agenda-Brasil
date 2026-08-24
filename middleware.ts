@@ -45,8 +45,15 @@ export async function middleware(request: NextRequest) {
   }
 
   const isDashboard = request.nextUrl.pathname.startsWith('/dashboard');
-  if (isDashboard && !userId) return copyAuthState(response, NextResponse.redirect(new URL('/', request.url)));
-  if (request.nextUrl.pathname === '/' && userId) return copyAuthState(response, NextResponse.redirect(new URL('/dashboard', request.url)));
+  if (isDashboard && !userId) {
+    const loginUrl = new URL('/', request.url);
+    loginUrl.searchParams.set('motivo', 'sessao-expirada');
+    return copyAuthState(response, NextResponse.redirect(loginUrl));
+  }
+
+  // Keep the login page reachable even when the browser still has an old
+  // cookie. Redirecting `/` from middleware could trap a user with a valid JWT
+  // but an unusable client session in a `/` <-> `/dashboard` loop.
   return response;
 }
 

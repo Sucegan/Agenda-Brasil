@@ -20,11 +20,12 @@ function useInviteParams() {
   return {
     isConviteBarbeiro: params.get('tipo') === 'barbeiro',
     conviteBarbeiro: params.get('convite'),
+    sessaoExpirada: params.get('motivo') === 'sessao-expirada',
   };
 }
 
 function LoginForm() {
-  const { isConviteBarbeiro, conviteBarbeiro } = useInviteParams();
+  const { isConviteBarbeiro, conviteBarbeiro, sessaoExpirada } = useInviteParams();
   const [preferirLogin, setPreferirLogin] = useState(true);
   const isLogin = !isConviteBarbeiro && preferirLogin;
   const [email, setEmail] = useState('');
@@ -156,6 +157,12 @@ function LoginForm() {
           </p>
         )}
       </div>
+
+      {sessaoExpirada && (
+        <p role="status" className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center text-sm text-amber-200">
+          Sua sessão anterior expirou. Entre novamente para continuar com segurança.
+        </p>
+      )}
       
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Site<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label>

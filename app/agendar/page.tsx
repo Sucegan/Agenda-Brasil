@@ -84,9 +84,14 @@ export default function PublicBookingPage() {
     if (resumedIntent.current === token) return;
     resumedIntent.current = token;
     const toastId = toast.loading('Finalizando sua solicitação segura...');
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      resumedIntent.current = null;
+      return toast.error('Este link não iniciou uma sessão válida. Solicite um novo link neste navegador.', { id: toastId });
+    }
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
+    if (sessionError || !accessToken) {
       resumedIntent.current = null;
       return toast.error('Entre novamente para concluir a solicitação.', { id: toastId });
     }
@@ -113,14 +118,15 @@ export default function PublicBookingPage() {
   useEffect(() => {
     let active = true;
     const initialize = async () => {
-      const [{ data, error }, { data: sessionData }] = await Promise.all([
+      const [{ data, error }, { data: userData, error: userError }] = await Promise.all([
         supabase.rpc('obter_catalogo_publico'),
-        supabase.auth.getSession(),
+        supabase.auth.getUser(),
       ]);
       if (!active) return;
       if (error || !data) toast.error(error?.message ?? 'Não foi possível carregar a agenda.');
       else setCatalog(data);
-      const userId = sessionData.session?.user.id ?? null;
+      if (userError) await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      const userId = userError ? null : userData.user?.id ?? null;
       setSessionUserId(userId);
       setLoading(false);
 
@@ -137,7 +143,12 @@ export default function PublicBookingPage() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionUserId(session?.user.id ?? null);
       const intentToken = new URLSearchParams(window.location.search).get('intent');
-      if (session?.user.id && intentToken) void completeIntent(intentToken);
+      // Supabase invokes this callback while holding its auth lock. Schedule
+      // the follow-up outside the callback so getUser/getSession cannot
+      // deadlock, which was especially visible in Safari.
+      if (session?.user.id && intentToken) {
+        window.setTimeout(() => { void completeIntent(intentToken); }, 0);
+      }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [completeAction, completeIntent]);
@@ -202,7 +213,7 @@ export default function PublicBookingPage() {
       });
       if (error) return toast.error(error.message);
       setMagicLinkSent(true);
-      toast.success('Enviamos um link seguro para o seu e-mail. Ele funciona também em outro dispositivo.');
+      toast.success('Enviamos um link seguro para o seu e-mail. Abra-o neste mesmo navegador para concluir.');
     } catch {
       toast.error('Não foi possível conectar. Verifique sua internet e tente novamente.');
     } finally {
@@ -248,7 +259,7 @@ export default function PublicBookingPage() {
 
         {service && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><CalendarDays className="text-blue-400" size={20} /> 3. Escolha data e horário</h2><div className="flex gap-2 overflow-x-auto pb-3">{days.map((day) => { const holiday = holidays.get(day.iso); const disabled = !barber?.dias_trabalho.includes(day.businessDay) || Boolean(holiday); return <button key={day.iso} disabled={disabled} title={holiday} onClick={() => { void selectDate(day); }} className={`shrink-0 rounded-xl border px-3 py-2 text-xs disabled:opacity-30 ${date === day.iso ? 'border-blue-400 bg-blue-500 text-white' : 'border-zinc-700 bg-zinc-950'}`}><b className="block">{day.day} {day.month}</b><span>{day.weekday}</span></button>; })}</div>{checkingSlots && <p className="mt-4 animate-pulse text-sm text-zinc-400">Consultando horários...</p>}{date && !checkingSlots && slots.length > 0 && <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-7">{slots.map((slot) => <button key={slot} onClick={() => setTime(slot)} className={`rounded-lg border py-2 text-sm font-bold ${time === slot ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950'}`}>{slot}</button>)}</div>}{date && !checkingSlots && slots.length === 0 && <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4"><p className="text-sm text-amber-200">Sem horários livres. Entre na fila e avisaremos quando houver uma vaga.</p><select value={period} onChange={(event) => setPeriod(event.target.value as typeof period)} className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3"><option value="qualquer">Qualquer período</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></select></div>}</section>}
 
-        {date && (time || slots.length === 0) && <section className="rounded-2xl border border-emerald-500/25 bg-zinc-900/80 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><UserRound className="text-emerald-400" size={20} /> 4. Identificação segura</h2>{sessionUserId ? <p className="mb-4 flex items-center gap-2 text-sm text-emerald-300"><ShieldCheck size={17} /> Você já está identificado.</p> : <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-zinc-400">NOME<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="text-xs font-bold text-zinc-400">WHATSAPP<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="text-xs font-bold text-zinc-400 sm:col-span-2">E-MAIL<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="flex items-start gap-2 text-xs text-zinc-400 sm:col-span-2"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href="/termos" className="text-emerald-400 underline">termos de uso</Link> e a <Link href="/privacidade" className="text-emerald-400 underline">política de privacidade</Link>.</span></label><div className="sm:col-span-2"><Captcha onToken={setCaptchaToken} /></div></div>}{magicLinkSent ? <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4 text-sm text-blue-200"><Mail className="mr-2 inline" size={17} /> Abra o link enviado ao seu e-mail para concluir. O link é válido por 30 minutos e pode ser aberto em outro dispositivo.</div> : <button disabled={submitting} onClick={() => { void authenticateOrComplete(time ? 'book' : 'waitlist'); }} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"><Clock size={18} /> {submitting ? 'Preparando com segurança...' : time ? 'Reservar horário' : 'Entrar na fila de espera'}</button>}{time && catalog.negocio.sinal_percentual > 0 && <p className="mt-3 text-center text-xs text-zinc-500">Este serviço solicita sinal de {catalog.negocio.sinal_percentual}%. As instruções Pix aparecerão depois da reserva.</p>}</section>}
+        {date && (time || slots.length === 0) && <section className="rounded-2xl border border-emerald-500/25 bg-zinc-900/80 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><UserRound className="text-emerald-400" size={20} /> 4. Identificação segura</h2>{sessionUserId ? <p className="mb-4 flex items-center gap-2 text-sm text-emerald-300"><ShieldCheck size={17} /> Você já está identificado.</p> : <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-zinc-400">NOME<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="text-xs font-bold text-zinc-400">WHATSAPP<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="text-xs font-bold text-zinc-400 sm:col-span-2">E-MAIL<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label><label className="flex items-start gap-2 text-xs text-zinc-400 sm:col-span-2"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href="/termos" className="text-emerald-400 underline">termos de uso</Link> e a <Link href="/privacidade" className="text-emerald-400 underline">política de privacidade</Link>.</span></label><div className="sm:col-span-2"><Captcha onToken={setCaptchaToken} /></div></div>}{magicLinkSent ? <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4 text-sm text-blue-200"><Mail className="mr-2 inline" size={17} /> Abra o link enviado ao seu e-mail neste mesmo navegador para concluir. O link é válido por 30 minutos.</div> : <button disabled={submitting} onClick={() => { void authenticateOrComplete(time ? 'book' : 'waitlist'); }} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"><Clock size={18} /> {submitting ? 'Preparando com segurança...' : time ? 'Reservar horário' : 'Entrar na fila de espera'}</button>}{time && catalog.negocio.sinal_percentual > 0 && <p className="mt-3 text-center text-xs text-zinc-500">Este serviço solicita sinal de {catalog.negocio.sinal_percentual}%. As instruções Pix aparecerão depois da reserva.</p>}</section>}
         <SiteRights className="border-t border-zinc-900 pt-5" />
       </section>
     </main>
