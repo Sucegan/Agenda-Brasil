@@ -4,16 +4,17 @@ import { PwaRegister } from "./pwa-register";
 import { InstallApp } from "@/components/install-app";
 import { WebVitals } from "@/components/web-vitals";
 import { NetworkStatus } from "@/components/network-status";
+import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Agenda Brasil | Agendamentos Online",
   description: "Agendamentos online simples e profissionais, com agenda, lembretes, fila de espera e gestão para barbearias.",
   keywords: ["agendamento online", "agenda para barbearia", "barbearia", "reservas online", "Agenda Brasil"],
-  authors: [{ name: "Sucegan Tech" }],
-  creator: "Sucegan Tech",
-  publisher: "Sucegan Tech",
-  other: { copyright: "© 2026 Sucegan Tech. Todos os direitos reservados." },
+  authors: [{ name: RIGHTS_HOLDER }],
+  creator: RIGHTS_HOLDER,
+  publisher: RIGHTS_HOLDER,
+  other: { copyright: COPYRIGHT_NOTICE },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
