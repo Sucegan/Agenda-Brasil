@@ -41,6 +41,7 @@ test('public booking route always returns a usable page', async ({ page }) => {
 
 test('dashboard redirects visitors without a session', async ({ page }) => {
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/?motivo=sessao-expirada$/);
   await expect(page.getByRole('heading', { name: 'Agenda Brasil' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('sessão anterior expirou');
 });
