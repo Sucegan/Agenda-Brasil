@@ -1,4 +1,3 @@
-import webpush from 'web-push';
 import type { Notification } from '@/lib/database.types';
 import { createAdminClient } from '@/lib/server/supabase-admin';
 
@@ -86,33 +85,9 @@ async function deliverWhatsapp(notification: Notification, message: string) {
   if (!response.ok) throw new Error(`Provedor de WhatsApp respondeu ${response.status}.`);
 }
 
-async function deliverPush(notification: Notification, message: string) {
-  const admin = createAdminClient();
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT ?? 'mailto:suporte@agenda-brasil.app';
-  if (!admin || !publicKey || !privateKey || !notification.usuario_id) throw new Error('Notificações push ainda não foram configuradas.');
-
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  const { data, error } = await admin.from('push_subscriptions').select('*').eq('usuario_id', notification.usuario_id);
-  if (error || !data?.length) throw new Error('O cliente ainda não ativou notificações neste aparelho.');
-
-  const payload = JSON.stringify({
-    title: notification.tipo === 'fila_espera' ? 'Horário disponível' : 'Agenda Brasil',
-    body: message,
-    url: '/dashboard',
-    tag: `agenda-${notification.agendamento_id ?? notification.id}`,
-  });
-  const results = await Promise.allSettled(data.map((subscription) => webpush.sendNotification({
-    endpoint: subscription.endpoint,
-    keys: { p256dh: subscription.p256dh, auth: subscription.auth_key },
-  }, payload)));
-  if (results.every((result) => result.status === 'rejected')) throw new Error('Nenhum aparelho aceitou a notificação.');
-}
-
 export async function deliverNotification(notification: Notification) {
   const message = messageFor(notification);
   if (notification.canal === 'email') return deliverEmail(notification, message);
   if (notification.canal === 'whatsapp') return deliverWhatsapp(notification, message);
-  return deliverPush(notification, message);
+  throw new Error('Canal não disponível na versão web.');
 }

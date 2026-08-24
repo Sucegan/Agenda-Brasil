@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { PwaRegister } from "./pwa-register";
-import { InstallApp } from "@/components/install-app";
+import { WebModeCleanup } from "./web-mode-cleanup";
 import { WebVitals } from "@/components/web-vitals";
 import { NetworkStatus } from "@/components/network-status";
 import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
@@ -16,14 +15,9 @@ export const metadata: Metadata = {
   publisher: RIGHTS_HOLDER,
   other: { copyright: COPYRIGHT_NOTICE },
   icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
-    ],
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
-  applicationName: "Agenda Brasil",
   category: "business",
   alternates: { canonical: "/" },
   openGraph: {
@@ -42,11 +36,6 @@ export const metadata: Metadata = {
     images: ["/og.png"],
   },
   robots: { index: true, follow: true },
-  appleWebApp: {
-    capable: true,
-    title: "Agenda Brasil",
-    statusBarStyle: "black-translucent",
-  },
 };
 
 export const viewport: Viewport = {
@@ -66,9 +55,8 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <PwaRegister />
+        <WebModeCleanup />
         <WebVitals />
-        <InstallApp />
         <NetworkStatus />
         {children}
       </body>

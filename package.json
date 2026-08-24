@@ -34,15 +34,13 @@
     "next": "15.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-hot-toast": "^2.6.0",
-    "web-push": "^3.6.7"
+    "react-hot-toast": "^2.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
     "eslint-config-next": "15.5.23",

@@ -25,6 +25,17 @@ async function processQueue(request: Request) {
 
   const processNotification = async (row: Notification) => {
     try {
+      if (row.canal === 'push') {
+        const { error: ignoreError } = await admin.from('notificacoes').update({
+          status: 'ignorada',
+          ultimo_erro: 'Canal desativado enquanto o produto opera somente na versão web.',
+          lease_id: null,
+          lease_expires_at: null,
+        }).eq('id', row.id).eq('lease_id', leaseId);
+        if (ignoreError) throw ignoreError;
+        return { id: row.id, status: 'ignorada' as const };
+      }
+
       await deliverNotification(row);
       const { error: updateError } = await admin.from('notificacoes').update({
         status: 'enviada',

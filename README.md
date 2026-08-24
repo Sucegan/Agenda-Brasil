@@ -1,6 +1,6 @@
 # Agenda Brasil
 
-Aplicação web/PWA de agendamento para barbearias, construída com Next.js 15, Supabase e Tailwind CSS. Inclui agenda de clientes e profissionais, link público sem senha, fila de espera, sinal por Pix, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
+Aplicação web responsiva de agendamento para barbearias, construída com Next.js 15, Supabase e Tailwind CSS. Inclui agenda de clientes e profissionais, link público sem senha, fila de espera, sinal por Pix, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
 
 ## Hospedagem
 
@@ -34,11 +34,10 @@ npm run test:db
 
 ## Mensagens automáticas
 
-A rota `/api/cron/notifications` processa a tabela `notificacoes`. Em Vercel, `vercel.json` agenda essa rota a cada dez minutos. Outros provedores podem chamar a mesma rota com `Authorization: Bearer $CRON_SECRET`.
+A rota `/api/cron/notifications` processa a tabela `notificacoes`. Na Vercel, `vercel.json` agenda essa rota uma vez por dia. Outros provedores podem chamar a mesma rota com `Authorization: Bearer $CRON_SECRET`.
 
 - E-mail: configure uma conta Resend, domínio validado, `RESEND_API_KEY` e `NOTIFICATION_EMAIL_FROM`.
 - WhatsApp: configure Meta WhatsApp Cloud API, `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`. Para mensagens iniciadas pelo negócio, cadastre um template aprovado e informe `WHATSAPP_TEMPLATE_NAME`.
-- Push: gere um par VAPID, configure as chaves e habilite push no painel da barbearia e do cliente.
 
 Sem essas credenciais a agenda continua funcionando; os itens permanecem registrados para diagnóstico e não são enviados.
 
