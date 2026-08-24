@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { loadEnvConfig } from '@next/env';
+import nextEnv from '@next/env';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../lib/database.types';
 
 async function main() {
+  const { loadEnvConfig } = nextEnv;
   loadEnvConfig(process.cwd());
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
