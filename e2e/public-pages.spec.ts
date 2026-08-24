@@ -13,6 +13,17 @@ test('login and public booking entry points fit the viewport', async ({ page }) 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? width);
 });
 
+test('web version does not expose install or update app surfaces', async ({ page, request }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(0);
+  await expect(page.getByText(/Uma nova versão está pronta/i)).toHaveCount(0);
+  await expect(page.getByText(/Instalar aplicativo|Adicionar à Tela de Início/i)).toHaveCount(0);
+
+  expect((await request.get('/manifest.webmanifest')).status()).toBe(404);
+  expect((await request.get('/sw.js')).status()).toBe(404);
+});
+
 test('legal pages are available without authentication', async ({ page }) => {
   await page.goto('/privacidade', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Política de privacidade' })).toBeVisible();
