@@ -7,7 +7,7 @@ import { NetworkStatus } from "@/components/network-status";
 import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://agenda-brasil.vercel.app"),
   title: "Agenda Brasil | Agendamentos Online",
   description: "Agendamentos online simples e profissionais, com agenda, lembretes, fila de espera e gestão para barbearias.",
   keywords: ["agendamento online", "agenda para barbearia", "barbearia", "reservas online", "Agenda Brasil"],

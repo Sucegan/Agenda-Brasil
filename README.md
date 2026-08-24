@@ -2,6 +2,10 @@
 
 Aplicação web/PWA de agendamento para barbearias, construída com Next.js 15, Supabase e Tailwind CSS. Inclui agenda de clientes e profissionais, link público sem senha, fila de espera, sinal por Pix, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
 
+## Hospedagem
+
+A aplicação utiliza exclusivamente Next.js na Vercel para compilação e hospedagem da produção.
+
 ## Titularidade
 
 Agenda Brasil é uma plataforma desenvolvida e mantida pela **Sucegan Tech**. O software, o código, a arquitetura, o design, os textos, a identidade visual e os demais elementos originais da plataforma são de titularidade da Sucegan Tech, ressalvados os conteúdos pertencentes aos estabelecimentos, usuários e terceiros.
