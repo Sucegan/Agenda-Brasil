@@ -1,11 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/lib/database.types";
+import { publicSupabaseAnonKey, publicSupabaseUrl } from "@/lib/public-env";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("As variáveis públicas do Supabase não foram configuradas.");
-}
-
-export const supabase = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
+export const supabase = createBrowserClient<Database>(publicSupabaseUrl, publicSupabaseAnonKey);
