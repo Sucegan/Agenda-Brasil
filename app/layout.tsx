@@ -8,7 +8,8 @@ import { NetworkStatus } from "@/components/network-status";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Agenda Brasil | Agendamentos Online",
-  description: "Sistema de agendamento de horários para barbearias e clientes.",
+  description: "Agendamentos online simples e profissionais, com agenda, lembretes, fila de espera e gestão para barbearias.",
+  keywords: ["agendamento online", "agenda para barbearia", "barbearia", "reservas online", "Agenda Brasil"],
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -18,7 +19,24 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   applicationName: "Agenda Brasil",
+  category: "business",
   alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "/",
+    siteName: "Agenda Brasil",
+    title: "Agenda Brasil | Agendamentos Online",
+    description: "Agendamentos online, simples e profissionais.",
+    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Agenda Brasil — agendamentos online, simples e profissionais" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Agenda Brasil | Agendamentos Online",
+    description: "Agendamentos online, simples e profissionais.",
+    images: ["/og.png"],
+  },
+  robots: { index: true, follow: true },
   appleWebApp: {
     capable: true,
     title: "Agenda Brasil",

@@ -16,6 +16,10 @@ async function main() {
   assert.equal(catalogError, null, `Public catalog failed: ${catalogError?.message}`);
   assert.ok(catalog?.negocio, 'Public catalog must include business settings.');
 
+  const { data: legal, error: legalError } = await anonymous.rpc('obter_informacoes_legais_publicas');
+  assert.equal(legalError, null, `Public legal information failed: ${legalError?.message}`);
+  assert.ok(legal?.nome, 'Public legal information must identify the business.');
+
   const { error: protectedError } = await anonymous.rpc('criar_agendamento_com_origem', {
     p_barbeiro_id: -1,
     p_servico_id: -1,
@@ -29,7 +33,17 @@ async function main() {
   assert.equal(telemetryError, null, 'Telemetry probe should be filtered by RLS.');
   assert.equal(telemetry?.length, 0, 'Anonymous users must not see telemetry rows.');
 
-  console.log('Integration security checks passed: public catalog allowed; booking mutation and telemetry denied.');
+  const { error: intentReadError } = await anonymous.from('booking_intents').select('token').limit(1);
+  assert.ok(intentReadError, 'Anonymous users must not read temporary booking identity data.');
+
+  const { error: rateLimitError } = await anonymous.rpc('consume_api_rate_limit', {
+    p_key_hash: '0'.repeat(64),
+    p_max_requests: 1,
+    p_window_seconds: 60,
+  });
+  assert.ok(rateLimitError, 'Anonymous users must not manipulate server rate limits.');
+
+  console.log('Integration security checks passed: public catalog/legal data allowed; mutations, intent PII, rate limits and telemetry denied.');
 }
 
 void main();

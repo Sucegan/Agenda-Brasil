@@ -24,6 +24,7 @@ const appointment: Appointment = {
   sinal_status: 'pago',
   cancelamento_tardio: false,
   public_token: '00000000-0000-0000-0000-000000000000',
+  pontos_creditados: true,
 };
 
 test('appointmentsCsv creates a UTF-8 spreadsheet with stable columns', () => {

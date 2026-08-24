@@ -1,29 +1,42 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient, getAuthenticatedUser } from '@/lib/server/supabase-admin';
+import { getAuthenticatedUser } from '@/lib/server/supabase-admin';
+import { consumeRateLimit, isSameSiteRequest } from '@/lib/server/request-protection';
 
 export const dynamic = 'force-dynamic';
 
 const allowedTypes = new Set(['erro_cliente', 'erro_servidor', 'web_vital']);
+type ObservabilityBody = { tipo?: string; rota?: string; mensagem?: string; contexto?: Record<string, unknown> };
 
 export async function POST(request: Request) {
   const length = Number(request.headers.get('content-length') ?? 0);
   if (length > 32_000) return NextResponse.json({ error: 'Payload muito grande.' }, { status: 413 });
-  const fetchSite = request.headers.get('sec-fetch-site');
-  if (fetchSite && !['same-origin', 'same-site'].includes(fetchSite)) return NextResponse.json({ error: 'Origem inválida.' }, { status: 403 });
+  if (!isSameSiteRequest(request)) return NextResponse.json({ error: 'Origem inválida.' }, { status: 403 });
 
-  const body = await request.json().catch(() => null) as null | { tipo?: string; rota?: string; mensagem?: string; contexto?: Record<string, unknown> };
+  const rawBody = await request.text();
+  if (rawBody.length > 32_000) return NextResponse.json({ error: 'Payload muito grande.' }, { status: 413 });
+  let body: ObservabilityBody | null = null;
+  try { body = JSON.parse(rawBody) as ObservabilityBody; } catch { body = null; }
   if (!body || !body.tipo || !allowedTypes.has(body.tipo) || typeof body.mensagem !== 'string') {
     return NextResponse.json({ error: 'Evento inválido.' }, { status: 400 });
   }
 
-  const { user } = await getAuthenticatedUser(request);
-  const admin = createAdminClient();
+  const { admin, user } = await getAuthenticatedUser(request);
+  if (admin && !await consumeRateLimit(admin, request, 'observability', 30, 60)) {
+    return NextResponse.json({ error: 'Limite de eventos excedido.' }, { status: 429, headers: { 'Retry-After': '60' } });
+  }
+  let safeContext: Record<string, unknown> = {};
+  try {
+    const serialized = JSON.stringify(body.contexto ?? {});
+    if (serialized.length <= 16_000) safeContext = JSON.parse(serialized) as Record<string, unknown>;
+  } catch {
+    safeContext = {};
+  }
   const event = {
     usuario_id: user?.id ?? null,
     tipo: body.tipo as 'erro_cliente' | 'erro_servidor' | 'web_vital',
     rota: String(body.rota ?? '/').slice(0, 300),
     mensagem: body.mensagem.slice(0, 2_000),
-    contexto: body.contexto ?? {},
+    contexto: safeContext,
   };
 
   if (admin) {

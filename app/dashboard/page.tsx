@@ -12,6 +12,8 @@ import { supabase } from '@/lib/supabase';
 import { BusinessGrowthSettings } from '@/components/business-growth-settings';
 import { CommunicationPreferences } from '@/components/communication-preferences';
 import { ReportTools } from '@/components/report-tools';
+import { NotificationHealth } from '@/components/notification-health';
+import { ReviewLoyalty } from '@/components/review-loyalty';
 import { ClientWaitlist, JoinWaitlistButton, ProfessionalWaitlist } from '@/components/waitlist-sections';
 import {
   appointmentStatusLabels, brazilDateISO, displayTime, formatCurrency,
@@ -148,6 +150,7 @@ export default function DashboardPage() {
   const [negocio, setNegocio] = useState<BusinessSettings | null>(null);
   const [barbeiro, setBarbeiro] = useState<Barber | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
+  const [clientPoints, setClientPoints] = useState(0);
   const [barbeiros, setBarbeiros] = useState<PublicBarber[]>([]);
   const [servicos, setServicos] = useState<Service[]>([]);
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
@@ -231,7 +234,7 @@ export default function DashboardPage() {
           supabase.rpc('listar_barbeiros_publicos'),
           supabase.from('servicos').select('*').order('nome'),
           supabase.rpc('listar_meus_agendamentos'),
-          supabase.from('clientes').select('id').eq('usuario_id', user.id).single(),
+          supabase.from('clientes').select('id,pontos_fidelidade').eq('usuario_id', user.id).single(),
         ]),
         DATA_LOAD_TIMEOUT_MS,
         'Os dados do cliente demoraram para responder. Tente novamente.',
@@ -242,6 +245,7 @@ export default function DashboardPage() {
       setAgendamentos(agendaData ?? []);
       setBarbeiro(null);
       setClienteId(cliente.id);
+      setClientPoints(cliente.pontos_fidelidade);
       setBloqueios([]);
       return;
     }
@@ -597,6 +601,7 @@ export default function DashboardPage() {
             <ClientWaitlist />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Próximos horários</h2><div className="space-y-3">{proximosCliente.length ? proximosCliente.map((item) => <AppointmentItem key={item.id} item={item} role="cliente" pixKey={negocio?.pix_chave} pixOwner={negocio?.pix_beneficiario} onInformPayment={() => { void informarPagamento(item.id); }} onConfirm={() => { void confirmarAgendamento(item.id); }} onCancel={() => { void cancelarAgendamento(item.id); }} />) : <p className="text-sm text-zinc-500">Você não tem próximos horários.</p>}</div></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Clock className="text-zinc-400" size={20} /> Histórico</h2><div className="space-y-3">{historicoCliente.length ? historicoCliente.map((item) => <AppointmentItem key={item.id} item={item} role="cliente" />) : <p className="text-sm text-zinc-500">Seu histórico aparecerá aqui.</p>}</div></section>
+            <ReviewLoyalty role="cliente" appointments={agendamentos} points={clientPoints} />
           </div>
         )}
 
@@ -608,6 +613,8 @@ export default function DashboardPage() {
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Agenda de hoje</h2><div className="space-y-3">{agendaHoje.length ? agendaHoje.map((item) => <AppointmentItem key={item.id} item={item} role="barbeiro" onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Nenhum cliente agendado para hoje.</p>}</div></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><BarChart3 className="text-amber-400" size={20} /> Relatório do mês</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatCard label="Realizado" value={formatCurrency(relatorioMes.receitas)} icon={Wallet} /><StatCard label="Ticket médio" value={formatCurrency(relatorioMes.ticket)} icon={TrendingUp} color="amber" /><StatCard label="Serviço favorito" value={relatorioMes.favorito ? `${relatorioMes.favorito[0]} (${relatorioMes.favorito[1]})` : 'Sem dados'} icon={Award} color="blue" /><StatCard label="Cliente frequente" value={relatorioMes.frequente ? `${relatorioMes.frequente[0]} (${relatorioMes.frequente[1]})` : 'Sem dados'} icon={Users} color="orange" /></div></section>
             <ReportTools appointments={agendamentos} />
+            <NotificationHealth />
+            <ReviewLoyalty role="barbeiro" appointments={agendamentos} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Clock className="text-emerald-400" size={20} /> Expediente</h2><form onSubmit={salvarExpediente} className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={horarioInicio} onChange={(event) => setHorarioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={horarioFim} onChange={(event) => setHorarioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><button className="self-end rounded-xl bg-emerald-600 p-3 font-bold hover:bg-emerald-500">Salvar expediente</button></div><div className="flex flex-wrap gap-2">{diasOrdenados.map((dia) => <button key={dia} type="button" onClick={() => setDiasTrabalho((atual) => atual.includes(dia) ? atual.filter((item) => item !== dia) : [...atual, dia].sort((a, b) => a - b) as BusinessDay[])} className={`rounded-lg border px-3 py-2 text-xs font-bold ${diasTrabalho.includes(dia) ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}>{weekdayLabels[dia]}</button>)}</div></form></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-2 flex items-center gap-2 text-lg font-black"><Clock className="text-amber-400" size={20} /> Intervalo diário de almoço</h2><p className="mb-4 text-sm text-zinc-500">Esse período será bloqueado automaticamente em todos os dias de expediente. Para remover, deixe os dois campos vazios e salve.</p><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={almocoInicio} onChange={(event) => setAlmocoInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={almocoFim} onChange={(event) => setAlmocoFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><button type="button" onClick={() => { void salvarAlmoco(); }} className="self-end rounded-xl bg-amber-500 p-3 font-bold text-zinc-950 hover:bg-amber-400">Salvar almoço</button></div></section>
             <section className="grid gap-5 lg:grid-cols-2">

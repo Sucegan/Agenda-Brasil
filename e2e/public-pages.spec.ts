@@ -27,3 +27,9 @@ test('public booking route always returns a usable page', async ({ page }) => {
   const viewport = page.viewportSize();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? 0);
 });
+
+test('dashboard redirects visitors without a session', async ({ page }) => {
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'Agenda Brasil' })).toBeVisible();
+});

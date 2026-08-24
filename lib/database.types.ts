@@ -23,9 +23,9 @@ export interface Database {
         Relationships: [];
       };
       configuracoes_negocio: {
-        Row: { id: true; nome: string; endereco: string | null; telefone: string | null; logo_url: string | null; updated_at: string; slug: string; agendamento_publico: boolean; cancelamento_horas: number; sinal_percentual: number; pix_chave: string | null; pix_beneficiario: string | null; lembrete_email: boolean; lembrete_whatsapp: boolean; lembrete_push: boolean; bloquear_apos_faltas: number; dias_bloqueio: number };
-        Insert: { id?: true; nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; slug?: string; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number };
-        Update: { nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; updated_at?: string; slug?: string; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number };
+        Row: { id: true; nome: string; endereco: string | null; telefone: string | null; logo_url: string | null; updated_at: string; slug: string; agendamento_publico: boolean; cancelamento_horas: number; sinal_percentual: number; pix_chave: string | null; pix_beneficiario: string | null; lembrete_email: boolean; lembrete_whatsapp: boolean; lembrete_push: boolean; bloquear_apos_faltas: number; dias_bloqueio: number; responsavel_legal: string | null; documento_legal: string | null; email_privacidade: string | null; prazo_retencao_meses: number };
+        Insert: { id?: true; nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; slug?: string; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number };
+        Update: { nome?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; updated_at?: string; slug?: string; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number };
         Relationships: [];
       };
       feriados_negocio: {
@@ -47,9 +47,9 @@ export interface Database {
         Relationships: [Relationship];
       };
       clientes: {
-        Row: { id: number; nome: string; telefone: string; email: string | null; usuario_id: string; faltas: number; bloqueado_ate: string | null; observacoes: string | null };
-        Insert: { id?: never; nome: string; telefone: string; email?: string | null; usuario_id: string; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null };
-        Update: { nome?: string; telefone?: string; email?: string | null; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null };
+        Row: { id: number; nome: string; telefone: string; email: string | null; usuario_id: string; faltas: number; bloqueado_ate: string | null; observacoes: string | null; pontos_fidelidade: number };
+        Insert: { id?: never; nome: string; telefone: string; email?: string | null; usuario_id: string; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null; pontos_fidelidade?: number };
+        Update: { nome?: string; telefone?: string; email?: string | null; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null; pontos_fidelidade?: number };
         Relationships: [Relationship];
       };
       servicos: {
@@ -80,6 +80,7 @@ export interface Database {
           sinal_status: PaymentStatus;
           cancelamento_tardio: boolean;
           public_token: string;
+          pontos_creditados: boolean;
         };
         Insert: never;
         Update: never;
@@ -92,10 +93,28 @@ export interface Database {
         Relationships: [Relationship, Relationship, Relationship];
       };
       notificacoes: {
-        Row: { id: number; usuario_id: string | null; agendamento_id: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status: "pendente" | "enviada" | "erro" | "ignorada"; agendado_para: string; tentativas: number; payload: Record<string, unknown>; ultimo_erro: string | null; enviada_em: string | null; created_at: string };
-        Insert: { id?: never; usuario_id?: string | null; agendamento_id?: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status?: "pendente" | "enviada" | "erro" | "ignorada"; agendado_para?: string; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null };
-        Update: { status?: "pendente" | "enviada" | "erro" | "ignorada"; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null };
+        Row: { id: number; usuario_id: string | null; agendamento_id: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para: string; tentativas: number; payload: Record<string, unknown>; ultimo_erro: string | null; enviada_em: string | null; lease_id: string | null; lease_expires_at: string | null; created_at: string };
+        Insert: { id?: never; usuario_id?: string | null; agendamento_id?: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para?: string; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
+        Update: { status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
         Relationships: [Relationship, Relationship];
+      };
+      booking_intents: {
+        Row: { token: string; action: "book" | "waitlist"; barber_id: number; service_id: number; booking_date: string; booking_time: string | null; period: "manha" | "tarde" | "noite" | "qualquer"; customer_name: string; customer_phone: string; customer_email: string; terms_accepted: true; expires_at: string; consumed_at: string | null; created_at: string };
+        Insert: { token?: string; action: "book" | "waitlist"; barber_id: number; service_id: number; booking_date: string; booking_time?: string | null; period?: "manha" | "tarde" | "noite" | "qualquer"; customer_name: string; customer_phone: string; customer_email: string; terms_accepted: true; expires_at?: string; consumed_at?: string | null; created_at?: string };
+        Update: { consumed_at?: string | null; expires_at?: string };
+        Relationships: [Relationship, Relationship];
+      };
+      api_rate_limits: {
+        Row: { key_hash: string; window_started_at: string; requests: number; updated_at: string };
+        Insert: { key_hash: string; window_started_at?: string; requests?: number; updated_at?: string };
+        Update: { window_started_at?: string; requests?: number; updated_at?: string };
+        Relationships: [];
+      };
+      avaliacoes: {
+        Row: { id: number; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario: string | null; created_at: string; updated_at: string };
+        Insert: { id?: never; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario?: string | null; created_at?: string; updated_at?: string };
+        Update: { nota?: number; comentario?: string | null; updated_at?: string };
+        Relationships: [Relationship, Relationship, Relationship];
       };
       push_subscriptions: {
         Row: { id: string; usuario_id: string; endpoint: string; p256dh: string; auth_key: string; user_agent: string | null; created_at: string; updated_at: string };
@@ -183,6 +202,22 @@ export interface Database {
         Returns: Database["public"]["Tables"]["configuracoes_negocio"]["Row"];
       };
       solicitar_exclusao_conta: { Args: Record<string, never>; Returns: Database["public"]["Tables"]["solicitacoes_exclusao"]["Row"] };
+      consume_api_rate_limit: {
+        Args: { p_key_hash: string; p_max_requests: number; p_window_seconds: number };
+        Returns: boolean;
+      };
+      claim_due_notifications: {
+        Args: { p_limit: number; p_lease_id: string; p_lease_seconds?: number };
+        Returns: Database["public"]["Tables"]["notificacoes"]["Row"][];
+      };
+      atualizar_informacoes_legais: {
+        Args: { p_responsavel_legal: string; p_documento_legal: string; p_email_privacidade: string; p_prazo_retencao_meses: number };
+        Returns: Database["public"]["Tables"]["configuracoes_negocio"]["Row"];
+      };
+      obter_informacoes_legais_publicas: {
+        Args: Record<string, never>;
+        Returns: PublicLegalInformation | null;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -204,3 +239,4 @@ export type PublicBusiness = Pick<BusinessSettings, "nome" | "endereco" | "telef
 export type PublicHoliday = Pick<BusinessHoliday, "data" | "descricao">;
 export type PublicCatalog = { negocio: PublicBusiness | null; barbeiros: PublicBarber[]; servicos: Service[]; feriados: PublicHoliday[] };
 export type ProfessionalWaitlistEntry = { id: number; data: string; periodo: string; status: string; cliente_nome: string; cliente_telefone: string; servico_nome: string; created_at: string };
+export type PublicLegalInformation = Pick<BusinessSettings, "nome" | "responsavel_legal" | "documento_legal" | "email_privacidade" | "telefone" | "endereco" | "prazo_retencao_meses">;
