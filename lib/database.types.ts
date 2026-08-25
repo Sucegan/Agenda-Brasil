@@ -1,4 +1,4 @@
-export type AccountType = "cliente" | "barbeiro";
+export type AccountType = "cliente" | "barbeiro" | "admin";
 export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado" | "nao_compareceu";
 export type BusinessDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type PaymentStatus = "nao_exigido" | "pendente" | "informado" | "pago" | "dispensado";

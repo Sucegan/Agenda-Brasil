@@ -12,8 +12,13 @@ export async function GET(request: Request) {
   }
   const barbershopId = new URL(request.url).searchParams.get('barbearia');
   if (!barbershopId || !/^[0-9a-f-]{36}$/i.test(barbershopId)) return NextResponse.json({ error: 'Barbearia inválida.' }, { status: 400 });
-  const { data: barber } = await admin.from('barbeiros').select('id').eq('usuario_id', user.id).eq('barbearia_id', barbershopId).limit(1).maybeSingle();
-  if (!barber) return NextResponse.json({ error: 'Acesso restrito a profissionais.' }, { status: 403 });
+  const [{ data: profile }, { data: business }] = await Promise.all([
+    admin.from('usuarios').select('tipo').eq('id', user.id).maybeSingle(),
+    admin.from('barbearias').select('proprietario_id').eq('id', barbershopId).maybeSingle(),
+  ]);
+  if (profile?.tipo !== 'admin' || business?.proprietario_id !== user.id) {
+    return NextResponse.json({ error: 'Acesso restrito ao administrador da unidade.' }, { status: 403 });
+  }
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const { data, error } = await admin.from('notificacoes').select('canal,status').contains('payload', { barbearia_id: barbershopId }).gte('created_at', since);

@@ -49,9 +49,17 @@ async function main() {
   const { error: notificationReadError } = await anonymous.rpc('marcar_notificacoes_lidas', { p_ids: [] });
   assert.ok(notificationReadError, 'Anonymous users must not update in-app notifications.');
 
-  const { data: telemetry, error: telemetryError } = await anonymous.from('telemetria_eventos').select('id').limit(1);
-  assert.equal(telemetryError, null, 'Telemetry probe should be filtered by RLS.');
-  assert.equal(telemetry?.length, 0, 'Anonymous users must not see telemetry rows.');
+  const { error: createBusinessError } = await anonymous.rpc('criar_barbearia', {
+    p_nome: 'Security probe',
+    p_slug: 'security-probe',
+  });
+  assert.ok(createBusinessError, 'Anonymous users must not execute administrator mutations.');
+
+  const { error: telemetryError } = await anonymous.from('telemetria_eventos').select('id').limit(1);
+  assert.ok(telemetryError, 'Anonymous users must hold no direct telemetry table privilege.');
+
+  const { error: profileReadError } = await anonymous.from('usuarios').select('id,tipo').limit(1);
+  assert.ok(profileReadError, 'Anonymous users must hold no direct profile table privilege.');
 
   const { error: intentReadError } = await anonymous.from('booking_intents').select('token').limit(1);
   assert.ok(intentReadError, 'Anonymous users must not read temporary booking identity data.');
@@ -63,7 +71,7 @@ async function main() {
   });
   assert.ok(rateLimitError, 'Anonymous users must not manipulate server rate limits.');
 
-  console.log('Integration security checks passed: public catalog/legal data allowed; mutations, intent PII, rate limits and telemetry denied.');
+  console.log('Integration security checks passed: public RPC data allowed; profile, admin, booking, intent, rate-limit and telemetry access denied.');
 }
 
 void main();

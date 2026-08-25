@@ -22,9 +22,17 @@ export async function POST(request: Request) {
     if (!appointment) return NextResponse.json({ error: 'Agendamento não encontrado.' }, { status: 404 });
     const [{ data: client }, { data: barber }] = await Promise.all([
       admin.from('clientes').select('usuario_id').eq('id', appointment.cliente_id).maybeSingle(),
-      admin.from('barbeiros').select('usuario_id').eq('id', appointment.barbeiro_id).maybeSingle(),
+      admin.from('barbeiros').select('usuario_id,barbearia_id').eq('id', appointment.barbeiro_id).maybeSingle(),
     ]);
-    if (!client || (client.usuario_id !== user.id && barber?.usuario_id !== user.id)) {
+    let adminOwnsBusiness = false;
+    if (client && barber && client.usuario_id !== user.id && barber.usuario_id !== user.id) {
+      const [{ data: profile }, { data: business }] = await Promise.all([
+        admin.from('usuarios').select('tipo').eq('id', user.id).maybeSingle(),
+        admin.from('barbearias').select('proprietario_id').eq('id', barber.barbearia_id).maybeSingle(),
+      ]);
+      adminOwnsBusiness = profile?.tipo === 'admin' && business?.proprietario_id === user.id;
+    }
+    if (!client || (client.usuario_id !== user.id && barber?.usuario_id !== user.id && !adminOwnsBusiness)) {
       return NextResponse.json({ error: 'Sem permissão para este agendamento.' }, { status: 403 });
     }
     targetUserId = client.usuario_id;
