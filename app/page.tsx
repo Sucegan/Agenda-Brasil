@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { SiteRights } from '@/components/site-rights';
 import { useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { CalendarDays, Mail, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles } from 'lucide-react';
+import { CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
 
 const subscribeToNothing = () => () => undefined;
@@ -37,6 +37,9 @@ function LoginForm() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
   const [website, setWebsite] = useState('');
+  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [confirmationNotice, setConfirmationNotice] = useState('');
+  const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ''); 
@@ -107,13 +110,12 @@ function LoginForm() {
           return;
         }
 
-        toast.success('Conta criada! Verifique a caixa de entrada, Spam e Promoções.', { id: toastId });
-        window.setTimeout(() => {
-          setPreferirLogin(true);
-          setSenha('');
-          setNome('');
-          setTelefone('');
-        }, 2000);
+        const normalizedEmail = email.trim().toLowerCase();
+        setConfirmationEmail(normalizedEmail);
+        setConfirmationNotice('Solicitação enviada agora. A entrega pode levar alguns minutos.');
+        setSenha('');
+        setCaptchaToken('');
+        toast.success('Cadastro realizado. Confirme seu e-mail para entrar.', { id: toastId });
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a operação.', { id: toastId });
@@ -142,16 +144,35 @@ function LoginForm() {
   };
 
   const reenviarConfirmacao = async () => {
-    if (!email.trim()) return toast.error('Informe o e-mail da conta.');
+    const targetEmail = (confirmationEmail || email).trim().toLowerCase();
+    if (!targetEmail) return toast.error('Informe o e-mail da conta.');
+    if (resendingConfirmation) return;
+    setResendingConfirmation(true);
     const toastId = toast.loading('Reenviando confirmação...');
-    const supabase = await getSupabase();
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
-    });
-    if (error) return toast.error('Não foi possível reenviar agora. Aguarde alguns minutos e tente novamente.', { id: toastId });
-    toast.success('E-mail reenviado. Confira também Spam e Promoções.', { id: toastId });
+    try {
+      const supabase = await getSupabase();
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: targetEmail,
+        options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+      });
+      if (error) {
+        const message = /rate limit/i.test(error.message)
+          ? 'Muitas tentativas. Aguarde alguns minutos antes de reenviar.'
+          : 'Não foi possível reenviar agora. Aguarde alguns minutos e tente novamente.';
+        setConfirmationNotice(message);
+        return toast.error(message, { id: toastId });
+      }
+      const message = 'Nova solicitação enviada. Confira também Spam e Promoções.';
+      setConfirmationNotice(message);
+      toast.success(message, { id: toastId });
+    } catch {
+      const message = 'Não foi possível conectar ao serviço de e-mail. Tente novamente.';
+      setConfirmationNotice(message);
+      toast.error(message, { id: toastId });
+    } finally {
+      setResendingConfirmation(false);
+    }
   };
 
   return (
@@ -177,8 +198,32 @@ function LoginForm() {
           Sua sessão anterior expirou. Entre novamente para continuar com segurança.
         </p>
       )}
+
+      {confirmationEmail && (
+        <section role="status" aria-live="polite" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-center">
+          <MailCheck className="mx-auto text-emerald-400" size={40} />
+          <h2 className="mt-3 text-xl font-black text-white">Cadastro realizado</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-300">
+            Solicitamos o envio do e-mail de confirmação para <strong className="break-all text-emerald-300">{confirmationEmail}</strong>.
+          </p>
+          <div className="mt-4 rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-3 text-left text-xs leading-5 text-zinc-400">
+            <p>1. Abra a mensagem da Agenda Brasil e confirme seu e-mail.</p>
+            <p>2. Se não aparecer, verifique Spam, Lixo eletrônico e Promoções.</p>
+            <p>3. Depois da confirmação, volte e entre com sua senha.</p>
+          </div>
+          <p className="mt-3 text-xs text-emerald-200">{confirmationNotice}</p>
+          <div className="mt-5 grid gap-2">
+            <button type="button" onClick={() => { void reenviarConfirmacao(); }} disabled={resendingConfirmation} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50">
+              <RefreshCw size={16} className={resendingConfirmation ? 'animate-spin' : ''} /> {resendingConfirmation ? 'Reenviando...' : 'Reenviar e-mail de confirmação'}
+            </button>
+            <button type="button" onClick={() => { setPreferirLogin(true); setConfirmationEmail(''); setConfirmationNotice(''); }} className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:border-emerald-500/50">
+              Ir para o login
+            </button>
+          </div>
+        </section>
+      )}
       
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {!confirmationEmail && <form onSubmit={handleSubmit} className="space-y-4">
         <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Site<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label>
         {!isLogin && (
           <div className="signup-fields space-y-4">
@@ -233,12 +278,12 @@ function LoginForm() {
             <button type="button" onClick={() => { void reenviarConfirmacao(); }} className="hover:text-emerald-300 transition-colors">Reenviar confirmação</button>
           </div>
         )}
-      </form>
+      </form>}
 
-      {!isConviteBarbeiro && (
+      {!confirmationEmail && !isConviteBarbeiro && (
         <div className="mt-6 space-y-3 text-center">
           <Link href="/agendar" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Agendar sem senha</Link>
-          <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+          <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); setConfirmationNotice(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>
           </button>
