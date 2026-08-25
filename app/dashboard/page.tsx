@@ -228,6 +228,7 @@ export default function DashboardPage() {
   const [salvandoNovaBarbearia, setSalvandoNovaBarbearia] = useState(false);
   const [novaBarbeariaNome, setNovaBarbeariaNome] = useState('');
   const [novaBarbeariaSlug, setNovaBarbeariaSlug] = useState('');
+  const [novaBarbeariaPublica, setNovaBarbeariaPublica] = useState(true);
 
   const hoje = brazilDateISO();
 
@@ -650,19 +651,29 @@ export default function DashboardPage() {
     if (nome.length < 2 || slug.length < 3) return toast.error('Informe nome e identificador válidos.');
     const toastId = toast.loading('Criando barbearia...');
     setSalvandoNovaBarbearia(true);
-    const { data, error } = await supabase.rpc('criar_barbearia', { p_nome: nome, p_slug: slug });
+    const { data, error } = await supabase.rpc('criar_barbearia', {
+      p_nome: nome,
+      p_slug: slug,
+      p_publicar: novaBarbeariaPublica,
+    });
     if (error || !data) {
       setSalvandoNovaBarbearia(false);
       return toast.error(error?.message ?? 'Não foi possível criar a barbearia.', { id: toastId });
     }
     setNovaBarbeariaNome('');
     setNovaBarbeariaSlug('');
+    setNovaBarbeariaPublica(true);
     setCriandoBarbearia(false);
     setBarbeiroGerenciadoId(null);
     setBarbeariaAtivaId(data.id);
     try {
       await carregarDados(data.id);
-      toast.success('Barbearia criada. Complete agora os dados e serviços.', { id: toastId });
+      toast.success(
+        novaBarbeariaPublica
+          ? 'Barbearia criada e publicada. Complete agora os dados e serviços.'
+          : 'Barbearia criada em modo privado.',
+        { id: toastId },
+      );
     } catch {
       toast.error('A barbearia foi criada, mas o painel não recarregou. Atualize a página.', { id: toastId });
     } finally {
@@ -782,8 +793,11 @@ export default function DashboardPage() {
               <form onSubmit={criarNovaBarbearia} className="mt-4 grid gap-3 border-t border-zinc-800 pt-4 sm:grid-cols-2">
                 <label className="text-xs font-bold text-zinc-400">NOME<input value={novaBarbeariaNome} onChange={(event) => { const value = event.target.value; setNovaBarbeariaNome(value); setNovaBarbeariaSlug(value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')); }} placeholder="Ex.: Barbearia Central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
                 <label className="text-xs font-bold text-zinc-400">IDENTIFICADOR DO LINK<input value={novaBarbeariaSlug} onChange={(event) => setNovaBarbeariaSlug(event.target.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))} placeholder="barbearia-central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
-                <p className="text-xs text-zinc-500 sm:col-span-2">A nova unidade começará privada. Cadastre serviços e regras antes de ativar o link público.</p>
-                <button disabled={salvandoNovaBarbearia} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-500 disabled:opacity-50 sm:col-span-2">{salvandoNovaBarbearia ? 'Criando...' : 'Criar e configurar barbearia'}</button>
+                <label className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-zinc-200 sm:col-span-2">
+                  <input type="checkbox" checked={novaBarbeariaPublica} onChange={(event) => setNovaBarbeariaPublica(event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-500" />
+                  <span><strong className="block text-emerald-300">Publicar esta barbearia agora</strong><span className="mt-1 block text-xs leading-5 text-zinc-400">Quando ativado, clientes poderão encontrá-la na lista de estabelecimentos. Você ainda poderá alterar essa opção nas configurações.</span></span>
+                </label>
+                <button disabled={salvandoNovaBarbearia} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-500 disabled:opacity-50 sm:col-span-2">{salvandoNovaBarbearia ? 'Criando...' : novaBarbeariaPublica ? 'Criar e publicar barbearia' : 'Criar barbearia privada'}</button>
               </form>
             )}
           </section>

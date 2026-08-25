@@ -5,6 +5,7 @@ declare
   v_admin uuid;
   v_employee uuid;
   v_created public.barbearias;
+  v_private public.barbearias;
   v_slug text := 'validacao-' || replace(gen_random_uuid()::text, '-', '');
   v_denied boolean := false;
   v_barber public.barbeiros;
@@ -36,8 +37,16 @@ begin
   end if;
 
   select * into v_created from public.criar_barbearia('Unidade de validação', v_slug);
-  if v_created.id is null or v_created.agendamento_publico then
-    raise exception 'Cadastro administrativo não criou uma unidade privada válida';
+  if v_created.id is null or not v_created.agendamento_publico then
+    raise exception 'Cadastro administrativo não publicou a nova unidade por padrão';
+  end if;
+  select * into v_private from public.criar_barbearia(
+    'Unidade privada de validação',
+    'privada-' || replace(gen_random_uuid()::text, '-', ''),
+    false
+  );
+  if v_private.id is null or v_private.agendamento_publico then
+    raise exception 'Cadastro administrativo não respeitou a opção de unidade privada';
   end if;
   if not exists (
     select 1 from public.barbeiros b

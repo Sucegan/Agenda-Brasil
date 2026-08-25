@@ -6,7 +6,7 @@ import { useEffect, useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
-import { signupErrorMessage, validateSignupFields } from '@/lib/signup-validation';
+import { signupErrorMessage, signupLooksLikeExistingAccount, validateSignupFields } from '@/lib/signup-validation';
 import type { PlatformPublicSettings } from '@/lib/database.types';
 
 const subscribeToNothing = () => () => undefined;
@@ -41,6 +41,7 @@ function LoginForm() {
   const [website, setWebsite] = useState('');
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [confirmationNotice, setConfirmationNotice] = useState('');
+  const [loginNotice, setLoginNotice] = useState('');
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
   const [platform, setPlatform] = useState<PlatformPublicSettings | null>(null);
 
@@ -70,8 +71,14 @@ function LoginForm() {
       const supabase = await getSupabase();
       if (isLogin) {
         if (!email.trim() || !senha) throw new Error('Informe seu e-mail e sua senha.');
-        const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-        if (error?.message.toLowerCase().includes('email not confirmed')) throw new Error('Seu e-mail ainda não foi confirmado. Use “Reenviar confirmação” abaixo.');
+        const normalizedLoginEmail = email.trim().toLowerCase();
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedLoginEmail, password: senha });
+        if (error?.message.toLowerCase().includes('email not confirmed')) {
+          setConfirmationEmail(normalizedLoginEmail);
+          setConfirmationNotice('Sua conta existe, mas ainda aguarda a confirmação do e-mail. Você pode solicitar um novo envio abaixo.');
+          toast.error('Confirme seu e-mail antes de entrar.', { id: toastId });
+          return;
+        }
         if (error) throw new Error('E-mail ou senha incorretos.');
         
         toast.success('Login realizado!', { id: toastId });
@@ -112,6 +119,18 @@ function LoginForm() {
           throw new Error(signupErrorMessage(authError));
         }
 
+        if (signupLooksLikeExistingAccount(authData.user)) {
+          setPreferirLogin(true);
+          setSenha('');
+          setCaptchaToken('');
+          setConfirmationEmail('');
+          setConfirmationNotice('');
+          const existingAccountMessage = 'Este e-mail já possui uma conta. Entre com sua senha ou use “Esqueci minha senha”.';
+          setLoginNotice(existingAccountMessage);
+          toast.error(existingAccountMessage, { id: toastId });
+          return;
+        }
+
         if (authData.session) {
           toast.success('Conta criada!', { id: toastId });
           window.location.replace('/dashboard');
@@ -145,7 +164,9 @@ function LoginForm() {
         redirectTo: `${window.location.origin}/redefinir-senha`,
       });
       if (error) throw error;
-      toast.success('Enviamos um link para você criar uma nova senha.', { id: toastId });
+      const message = 'Solicitamos o envio do link para criar uma nova senha. Confira também Spam e Promoções.';
+      setLoginNotice(message);
+      toast.success(message, { id: toastId });
     } catch {
       toast.error('Não foi possível enviar o link. Verifique sua conexão e o e-mail informado.', { id: toastId });
     }
@@ -169,14 +190,17 @@ function LoginForm() {
           ? 'Muitas tentativas. Aguarde alguns minutos antes de reenviar.'
           : 'Não foi possível reenviar agora. Aguarde alguns minutos e tente novamente.';
         setConfirmationNotice(message);
+        if (!confirmationEmail) setLoginNotice(message);
         return toast.error(message, { id: toastId });
       }
-      const message = 'Nova solicitação enviada. Confira também Spam e Promoções.';
+      const message = 'Solicitação recebida. Se a conta ainda estiver pendente, o e-mail será enviado; confira também Spam e Promoções.';
       setConfirmationNotice(message);
+      if (!confirmationEmail) setLoginNotice(message);
       toast.success(message, { id: toastId });
     } catch {
       const message = 'Não foi possível conectar ao serviço de e-mail. Tente novamente.';
       setConfirmationNotice(message);
+      if (!confirmationEmail) setLoginNotice(message);
       toast.error(message, { id: toastId });
     } finally {
       setResendingConfirmation(false);
@@ -204,6 +228,12 @@ function LoginForm() {
       {sessaoExpirada && (
         <p role="status" className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center text-sm text-amber-200">
           Sua sessão anterior expirou. Entre novamente para continuar com segurança.
+        </p>
+      )}
+
+      {loginNotice && isLogin && !confirmationEmail && (
+        <p role="status" aria-live="polite" className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center text-sm leading-6 text-amber-100">
+          {loginNotice}
         </p>
       )}
 
@@ -258,7 +288,7 @@ function LoginForm() {
           <label htmlFor="email" className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">E-mail</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><Mail size={18} /></div>
-            <input type="email" id="email" name="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" required maxLength={254} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
+            <input type="email" id="email" name="email" autoComplete="email" value={email} onChange={e=>{ setEmail(e.target.value); setLoginNotice(''); }} placeholder="seu@email.com" required maxLength={254} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
           </div>
         </div>
 
@@ -293,7 +323,7 @@ function LoginForm() {
       {!confirmationEmail && !isConviteBarbeiro && (
         <div className="mt-6 space-y-3 text-center">
           <Link href="/estabelecimentos" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Escolher estabelecimento e agendar</Link>
-          <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); setConfirmationNotice(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+          <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); setConfirmationNotice(''); setLoginNotice(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>
           </button>

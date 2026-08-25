@@ -306,7 +306,7 @@ export interface Database {
       listar_minhas_barbearias: { Args: Record<string, never>; Returns: Database["public"]["Tables"]["barbearias"]["Row"][] };
       listar_barbearias_publicas: { Args: Record<string, never>; Returns: Pick<Database["public"]["Tables"]["barbearias"]["Row"], "id" | "nome" | "slug" | "endereco" | "telefone" | "logo_url">[] };
       obter_barbearia_autenticada: { Args: { p_barbearia_id: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] | null };
-      criar_barbearia: { Args: { p_nome: string; p_slug: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      criar_barbearia: { Args: { p_nome: string; p_slug: string; p_publicar?: boolean }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
       marcar_notificacoes_lidas: { Args: { p_ids: number[] }; Returns: number };
       obter_status_cliente_barbearia: { Args: { p_barbearia_id: string }; Returns: { cliente_id: number; faltas: number; bloqueado_ate: string | null; pontos_fidelidade: number }[] };
       entrar_fila_espera: {

@@ -9,6 +9,19 @@ export type SignupValidationResult =
   | { data: NormalizedSignup; error: null }
   | { data: null; error: string };
 
+type SignupUserLike = {
+  identities?: unknown[] | null;
+};
+
+/**
+ * With e-mail confirmation enabled, Supabase deliberately returns an
+ * obfuscated user instead of an error when an address is already registered.
+ * That response has no identities and must not be presented as a new account.
+ */
+export function signupLooksLikeExistingAccount(user: SignupUserLike | null | undefined) {
+  return Boolean(user && Array.isArray(user.identities) && user.identities.length === 0);
+}
+
 export function validateSignupFields(input: { name: string; phone: string; email: string; password: string }): SignupValidationResult {
   const name = input.name.trim().replace(/\s+/g, ' ');
   const phoneDigits = input.phone.replace(/\D/g, '');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { signupErrorMessage, validateSignupFields } from '../lib/signup-validation';
+import { signupErrorMessage, signupLooksLikeExistingAccount, validateSignupFields } from '../lib/signup-validation';
 
 test('signup validation rejects a one-character name before Supabase', () => {
   const result = validateSignupFields({ name: 's', phone: '(18) 99658-2256', email: 'cliente@example.com', password: '123456' });
@@ -24,4 +24,10 @@ test('database signup failures are translated into a useful message', () => {
     signupErrorMessage({ code: 'unexpected_failure', message: 'Database error saving new user' }),
     'Não foi possível criar o perfil. Confira o nome completo, o WhatsApp e tente novamente.',
   );
+});
+
+test('an obfuscated signup response is recognized as an existing account', () => {
+  assert.equal(signupLooksLikeExistingAccount({ identities: [] }), true);
+  assert.equal(signupLooksLikeExistingAccount({ identities: [{ id: 'identity-id' }] }), false);
+  assert.equal(signupLooksLikeExistingAccount(null), false);
 });
