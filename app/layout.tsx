@@ -4,6 +4,7 @@ import { WebModeCleanup } from "./web-mode-cleanup";
 import { WebVitals } from "@/components/web-vitals";
 import { NetworkStatus } from "@/components/network-status";
 import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://agenda-brasil.vercel.app"),
@@ -59,6 +60,7 @@ export default function RootLayout({
         <WebVitals />
         <NetworkStatus />
         {children}
+        <Analytics />
       </body>
     </html>
   );
