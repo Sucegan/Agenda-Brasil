@@ -31,6 +31,9 @@ begin
     raise exception 'Proprietário existente não foi migrado para o perfil admin';
   end if;
   perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  if not public.eh_admin_global() then
+    raise exception 'Perfil administrativo não recebeu acesso global';
+  end if;
 
   select * into v_created from public.criar_barbearia('Unidade de validação', v_slug);
   if v_created.id is null or v_created.agendamento_publico then
@@ -40,9 +43,15 @@ begin
     select 1 from public.barbeiros b
     where b.barbearia_id = v_created.id and b.usuario_id = v_admin
   ) then raise exception 'Administrador não foi vinculado à nova unidade'; end if;
-  if exists (
-    select 1 from public.listar_minhas_barbearias() x where x.proprietario_id <> v_admin
-  ) then raise exception 'Administrador recebeu unidade de outro proprietário'; end if;
+  if (select count(*) from public.listar_minhas_barbearias()) <> (select count(*) from public.barbearias) then
+    raise exception 'Administrador não recebeu todas as unidades da plataforma';
+  end if;
+  if (public.obter_resumo_admin() -> 'metricas' ->> 'unidades_total')::integer <> (select count(*) from public.barbearias) then
+    raise exception 'Resumo administrativo não representa todas as unidades';
+  end if;
+  if not exists (select 1 from public.listar_usuarios_admin(null, null, 100) x where x.id = v_admin) then
+    raise exception 'Diretório administrativo não listou o próprio administrador';
+  end if;
 
   select b.usuario_id into v_employee
   from public.barbeiros b

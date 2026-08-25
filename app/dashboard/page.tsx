@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import toast, { Toaster } from 'react-hot-toast';
 import {
   Award, BarChart3, Building2, CalendarCheck2, CalendarDays, CalendarX2,
@@ -29,6 +30,10 @@ import type {
 import { requestNotificationDelivery } from '@/lib/notification-client';
 
 const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'cancelado', 'nao_compareceu'];
+const AdminCommandCenter = dynamic(
+  () => import('@/components/admin-command-center').then((module) => module.AdminCommandCenter),
+  { loading: () => <div className="h-52 animate-pulse rounded-3xl border border-violet-500/20 bg-zinc-900/70" /> },
+);
 const paymentStatusLabels: Record<PaymentStatus, string> = {
   nao_exigido: 'não exigido',
   pendente: 'aguardando pagamento',
@@ -168,6 +173,7 @@ export default function DashboardPage() {
   const [barbeariasPublicas, setBarbeariasPublicas] = useState<PublicBarbershopSummary[]>([]);
   const [barbeariaAtivaId, setBarbeariaAtivaId] = useState<string | null>(null);
   const [barbeiro, setBarbeiro] = useState<Barber | null>(null);
+  const [barbeiroGerenciadoId, setBarbeiroGerenciadoId] = useState<number | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [clientPoints, setClientPoints] = useState(0);
   const [barbeiros, setBarbeiros] = useState<PublicBarber[]>([]);
@@ -270,17 +276,20 @@ export default function DashboardPage() {
     const requestedBusinessId = forcedBusinessId ?? barbeariaAtivaId;
     const selectedBusinessId = businesses.some((item) => item.id === requestedBusinessId) ? requestedBusinessId! : businesses[0].id;
     if (barbeariaAtivaId !== selectedBusinessId) setBarbeariaAtivaId(selectedBusinessId);
-    const [{ data: business, error: businessError }, { data: holidays, error: holidaysError }, { data: profissional, error: profissionalError }] = await Promise.all([
+    const [{ data: business, error: businessError }, { data: holidays, error: holidaysError }] = await Promise.all([
       supabase.from('barbearias').select('*').eq('id', selectedBusinessId).single(),
       supabase.from('feriados_negocio').select('*').eq('barbearia_id', selectedBusinessId).order('data'),
-      supabase.from('barbeiros').select('*').eq('usuario_id', user.id).eq('barbearia_id', selectedBusinessId).single(),
     ]);
-    if (businessError || holidaysError || profissionalError || !business || !profissional) throw businessError ?? holidaysError ?? profissionalError ?? new Error('Não foi possível carregar a barbearia selecionada.');
+    if (businessError || holidaysError || !business) throw businessError ?? holidaysError ?? new Error('Não foi possível carregar a barbearia selecionada.');
     const isAdminProfile = perfil.tipo === 'admin';
     const { data: teamData, error: teamError } = isAdminProfile
-      ? await supabase.from('barbeiros').select('id,nome,horario_inicio,horario_fim,dias_trabalho').eq('barbearia_id', selectedBusinessId).order('nome')
-      : { data: [profissional], error: null };
+      ? await supabase.from('barbeiros').select('*').eq('barbearia_id', selectedBusinessId).order('nome')
+      : await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).eq('barbearia_id', selectedBusinessId);
     if (teamError || !teamData?.length) throw teamError ?? new Error('Nenhum profissional vinculado a esta barbearia.');
+    const profissional = isAdminProfile
+      ? teamData.find((item) => item.id === barbeiroGerenciadoId) ?? teamData[0]
+      : teamData[0];
+    if (barbeiroGerenciadoId !== profissional.id) setBarbeiroGerenciadoId(profissional.id);
     const teamBarberIds = teamData.map((item) => item.id);
     setNegocio(business);
     setFeriados(holidays ?? []);
@@ -312,7 +321,7 @@ export default function DashboardPage() {
     setAlmocoInicio(profissional.horario_almoco_inicio ? displayTime(profissional.horario_almoco_inicio) : '');
     setAlmocoFim(profissional.horario_almoco_fim ? displayTime(profissional.horario_almoco_fim) : '');
     setDiasTrabalho(profissional.dias_trabalho);
-  }, [barbeariaAtivaId]);
+  }, [barbeariaAtivaId, barbeiroGerenciadoId]);
 
   const recarregar = useCallback(() => {
     setLoading(true);
@@ -612,6 +621,7 @@ export default function DashboardPage() {
     setNovaBarbeariaNome('');
     setNovaBarbeariaSlug('');
     setCriandoBarbearia(false);
+    setBarbeiroGerenciadoId(null);
     setBarbeariaAtivaId(data.id);
     try {
       await carregarDados(data.id);
@@ -653,7 +663,7 @@ export default function DashboardPage() {
   const diasOrdenados: BusinessDay[] = [0, 1, 2, 3, 4, 5, 6];
   const isAdmin = usuario.tipo === 'admin';
   const isProfessionalUser = usuario.tipo === 'admin' || usuario.tipo === 'barbeiro';
-  const isBusinessOwner = Boolean(isAdmin && negocio && negocio.proprietario_id === usuario.id);
+  const isBusinessOwner = Boolean(isAdmin && negocio);
   const professionalAppointmentRole = isAdmin ? 'admin' as const : 'barbeiro' as const;
 
   return (
@@ -680,7 +690,7 @@ export default function DashboardPage() {
               <h2 className="font-black text-white">{isAdmin ? 'Painel administrativo' : usuario.tipo === 'barbeiro' ? 'Painel do profissional' : 'Painel do cliente'}</h2>
               <p className="mt-1 text-xs leading-5 text-zinc-400">
                 {isAdmin
-                  ? 'Acesso às unidades próprias, equipe, agenda completa, pagamentos, relatórios, regras e configurações.'
+                  ? 'Acesso global a todas as unidades, usuários, equipe, clientes, agenda, pagamentos, avaliações, relatórios e configurações.'
                   : usuario.tipo === 'barbeiro'
                     ? 'Acesso somente à sua agenda, clientes atendidos, serviços, horários e bloqueios nas unidades vinculadas.'
                     : 'Acesso somente aos seus agendamentos, pagamentos, fila de espera, avaliações e dados pessoais.'}
@@ -688,6 +698,19 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
+        {isAdmin && (
+          <AdminCommandCenter
+            activeBarbershopId={barbeariaAtivaId}
+            onSelectBarbershop={(id) => {
+              setBarbeiroGerenciadoId(null);
+              setBarbeariaAtivaId(id);
+              setStep(1);
+              setSelectedBarbeiro(null);
+              window.setTimeout(() => document.getElementById('operacao-unidade')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+            }}
+            onRefresh={() => carregarDados()}
+          />
+        )}
         {usuario?.tipo === 'cliente' && barbeariasPublicas.length > 1 && (
           <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Escolha a barbearia
@@ -698,13 +721,18 @@ export default function DashboardPage() {
           </section>
         )}
         {isProfessionalUser && (isAdmin || barbearias.length > 1) && (
-          <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
+          <section id="operacao-unidade" className="scroll-mt-24 rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Barbearia ativa
-                <select value={barbeariaAtivaId ?? ''} onChange={(event) => { setBarbeariaAtivaId(event.target.value); setStep(1); setSelectedBarbeiro(null); }} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-emerald-500">
-                  {barbearias.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                <select value={barbeariaAtivaId ?? ''} onChange={(event) => { setBarbeiroGerenciadoId(null); setBarbeariaAtivaId(event.target.value); setStep(1); setSelectedBarbeiro(null); }} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-emerald-500">
+                  {barbearias.map((item) => <option key={item.id} value={item.id}>{item.nome}{item.ativa ? '' : ' (inativa)'}</option>)}
                 </select>
               </label>
+              {isAdmin && barbeiros.length > 0 && <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Profissional em gestão
+                <select value={barbeiroGerenciadoId ?? ''} onChange={(event) => setBarbeiroGerenciadoId(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-violet-500/30 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-violet-400">
+                  {barbeiros.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                </select>
+              </label>}
               {isAdmin && <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>}
             </div>
             {criandoBarbearia && (
@@ -762,7 +790,7 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Umbrella className="text-blue-400" size={20} /> Bloquear agenda</h2><form onSubmit={salvarBloqueio} className="space-y-3"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">TIPO<select value={bloqueioTipo} onChange={(event) => setBloqueioTipo(event.target.value as typeof bloqueioTipo)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none"><option value="pausa">Pausa</option><option value="folga">Folga</option><option value="ferias">Férias</option></select></label><label className="text-xs font-bold text-zinc-400">MOTIVO<input value={bloqueioMotivo} onChange={(event) => setBloqueioMotivo(event.target.value)} placeholder="Ex.: Almoço" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">DATA INICIAL<input type="date" value={bloqueioInicio} onChange={(event) => setBloqueioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">DATA FINAL<input type="date" value={bloqueioFim} onChange={(event) => setBloqueioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>{bloqueioTipo === 'pausa' && <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">INÍCIO<input type="time" value={bloqueioHoraInicio} onChange={(event) => setBloqueioHoraInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">FIM<input type="time" value={bloqueioHoraFim} onChange={(event) => setBloqueioHoraFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>}<button className="w-full rounded-xl bg-blue-600 py-3 font-bold hover:bg-blue-500">Bloquear período</button></form><div className="mt-4 space-y-2">{bloqueios.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span><b className="uppercase text-blue-300">{item.tipo}</b> · {formatDate(item.data_inicio)}{item.data_fim !== item.data_inicio && ` a ${formatDate(item.data_fim)}`} {item.hora_inicio && `· ${displayTime(item.hora_inicio)}-${displayTime(item.hora_fim ?? '')}`}<small className="ml-2 text-zinc-500">{item.motivo}</small></span><button onClick={() => { void removerBloqueio(item.id); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button></div>)}{!bloqueios.length && <p className="text-xs text-zinc-500">Nenhum bloqueio cadastrado.</p>}</div></div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarX2 className="text-orange-400" size={20} /> Feriados</h2>{isBusinessOwner && <form onSubmit={salvarFeriado} className="space-y-3"><label className="block text-xs font-bold text-zinc-400">DATA<input type="date" value={feriadoData} onChange={(event) => setFeriadoData(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="block text-xs font-bold text-zinc-400">DESCRIÇÃO<input value={feriadoDescricao} onChange={(event) => setFeriadoDescricao(event.target.value)} placeholder="Ex.: Natal" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><button className="w-full rounded-xl bg-orange-600 py-3 font-bold hover:bg-orange-500">Salvar feriado</button></form>}<div className="mt-4 space-y-2">{feriados.map((item) => <div key={item.data} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span>{formatDate(item.data)} <b className="ml-2 text-orange-200">{item.descricao}</b></span>{isBusinessOwner && <button onClick={() => { void removerFeriado(item.data); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button>}</div>)}{!feriados.length && <p className="text-xs text-zinc-500">Nenhum feriado cadastrado.</p>}</div></div>
             </section>
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2><form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> Adicionar serviço para meu atendimento</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="block text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small>{isAdmin && <small className="block text-violet-300">Profissional: {barbeiros.find((member) => member.id === item.barbeiro_id)?.nome ?? 'Equipe'}</small>}</span><button onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20"><Trash2 size={16} /></button></div>)}</div></section>
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-1 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2>{isAdmin && <p className="mb-4 text-xs text-violet-300">Gerenciando o catálogo de <b>{barbeiro.nome}</b>. Troque o profissional no seletor da unidade para editar outro catálogo.</p>}<form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> {isAdmin ? `Adicionar serviço para ${barbeiro.nome}` : 'Adicionar serviço para meu atendimento'}</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="block text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small>{isAdmin && <small className="block text-violet-300">Profissional: {barbeiros.find((member) => member.id === item.barbeiro_id)?.nome ?? 'Equipe'}</small>}</span><button type="button" onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20" aria-label={`Excluir serviço ${item.nome}`}><Trash2 size={16} /></button></div>)}</div></section>
             {isBusinessOwner && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Configurações da barbearia</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Nome<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Telefone<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Endereço<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">URL da logo<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><button className="rounded-xl bg-emerald-600 px-5 py-3 font-bold hover:bg-emerald-500 sm:col-span-2"><Building2 className="mr-1 inline" size={16} /> Salvar configurações</button></form>{negocio?.endereco && <p className="mt-4 flex items-center gap-2 text-xs text-zinc-500"><MapPin size={14} /> {negocio.endereco}</p>}</section>}
             {negocio && isBusinessOwner && <BusinessGrowthSettings key={negocio.id} business={negocio} onUpdated={carregarDados} />}
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={20} /> Próximos agendamentos</h2><div className="space-y-3">{agendaFutura.length ? agendaFutura.map((item) => <AppointmentItem key={item.id} item={item} role={professionalAppointmentRole} onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Não há próximos agendamentos.</p>}</div></section>

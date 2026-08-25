@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(30);
 
 select has_table('public', 'fila_espera', 'fila de espera existe');
 select has_table('public', 'notificacoes', 'fila de notificações existe');
@@ -10,6 +10,7 @@ select has_table('public', 'telemetria_eventos', 'telemetria existe');
 select has_table('public', 'booking_intents', 'intenções temporárias existem');
 select has_table('public', 'api_rate_limits', 'limites de API existem');
 select has_table('public', 'avaliacoes', 'avaliações existem');
+select has_table('public', 'admin_audit_logs', 'auditoria administrativa existe');
 
 select ok((select relrowsecurity from pg_class where oid = 'public.fila_espera'::regclass), 'RLS ativo na fila de espera');
 select ok((select relrowsecurity from pg_class where oid = 'public.notificacoes'::regclass), 'RLS ativo nas notificações');
@@ -18,6 +19,11 @@ select ok((select relrowsecurity from pg_class where oid = 'public.telemetria_ev
 select ok((select relrowsecurity from pg_class where oid = 'public.booking_intents'::regclass), 'RLS ativo nas intenções temporárias');
 select ok((select relrowsecurity from pg_class where oid = 'public.api_rate_limits'::regclass), 'RLS ativo nos limites de API');
 select ok((select relrowsecurity from pg_class where oid = 'public.avaliacoes'::regclass), 'RLS ativo nas avaliações');
+select ok((select relrowsecurity from pg_class where oid = 'public.admin_audit_logs'::regclass), 'RLS ativo na auditoria administrativa');
+
+select has_function('public', 'eh_admin_global', array[]::text[], 'verificação administrativa global existe');
+select has_function('public', 'obter_resumo_admin', array[]::text[], 'resumo administrativo existe');
+select has_function('public', 'listar_usuarios_admin', array['text', 'text', 'integer'], 'diretório administrativo existe');
 
 select ok(has_function_privilege('anon', 'public.obter_catalogo_publico()', 'execute'), 'anon pode consultar catálogo seguro');
 select ok(has_function_privilege('anon', 'public.buscar_horarios_disponiveis(bigint,bigint,date)', 'execute'), 'anon pode consultar disponibilidade');

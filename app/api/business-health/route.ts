@@ -14,10 +14,10 @@ export async function GET(request: Request) {
   if (!barbershopId || !/^[0-9a-f-]{36}$/i.test(barbershopId)) return NextResponse.json({ error: 'Barbearia inválida.' }, { status: 400 });
   const [{ data: profile }, { data: business }] = await Promise.all([
     admin.from('usuarios').select('tipo').eq('id', user.id).maybeSingle(),
-    admin.from('barbearias').select('proprietario_id').eq('id', barbershopId).maybeSingle(),
+    admin.from('barbearias').select('id').eq('id', barbershopId).maybeSingle(),
   ]);
-  if (profile?.tipo !== 'admin' || business?.proprietario_id !== user.id) {
-    return NextResponse.json({ error: 'Acesso restrito ao administrador da unidade.' }, { status: 403 });
+  if (profile?.tipo !== 'admin' || !business) {
+    return NextResponse.json({ error: 'Acesso restrito a administradores.' }, { status: 403 });
   }
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();

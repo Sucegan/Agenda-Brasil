@@ -5,6 +5,60 @@ export type PaymentStatus = "nao_exigido" | "pendente" | "informado" | "pago" | 
 export type WaitlistStatus = "aguardando" | "notificado" | "convertido" | "cancelado";
 export type PublicBarber = Pick<Barber, "id" | "nome" | "horario_inicio" | "horario_fim" | "dias_trabalho">;
 
+export type AdminMetrics = {
+  unidades_total: number;
+  unidades_ativas: number;
+  profissionais: number;
+  clientes: number;
+  usuarios: number;
+  agendamentos_hoje: number;
+  receita_mes: number;
+  sinais_pendentes: number;
+  avaliacao_media: number;
+  avaliacoes_total: number;
+  erros_24h: number;
+  exclusoes_pendentes: number;
+};
+
+export type AdminUnitSummary = {
+  id: string;
+  nome: string;
+  slug: string;
+  ativa: boolean;
+  agendamento_publico: boolean;
+  profissionais: number;
+  agendamentos: number;
+  receita_mes: number;
+  avaliacao_media: number;
+};
+
+export type AdminDashboardSummary = {
+  metricas: AdminMetrics;
+  unidades: AdminUnitSummary[];
+  gerado_em: string;
+};
+
+export type AdminUserDirectoryEntry = {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  email: string;
+  tipo: AccountType;
+  created_at: string;
+};
+
+export type AdminClientDirectoryEntry = {
+  id: number;
+  nome: string;
+  telefone: string;
+  email: string | null;
+  agendamentos: number;
+  ultimo_atendimento: string | null;
+  total_gasto: number;
+  faltas: number;
+  pontos_fidelidade: number;
+};
+
 type Relationship = {
   foreignKeyName: string;
   columns: string[];
@@ -146,6 +200,12 @@ export interface Database {
         Update: { status?: "pendente" | "processando" | "concluida" | "cancelada"; processada_em?: string | null };
         Relationships: [Relationship];
       };
+      admin_audit_logs: {
+        Row: { id: number; admin_id: string; acao: string; entidade: string; entidade_id: string | null; detalhes: Record<string, unknown>; created_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [Relationship];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -215,6 +275,20 @@ export interface Database {
       listar_fila_profissional: { Args: { p_barbeiro_id: number }; Returns: ProfessionalWaitlistEntry[] };
       informar_pagamento_sinal: { Args: { p_agendamento_id: number }; Returns: undefined };
       atualizar_sinal_agendamento: { Args: { p_agendamento_id: number; p_status: "pendente" | "informado" | "pago" | "dispensado" }; Returns: undefined };
+      eh_admin_global: { Args: Record<string, never>; Returns: boolean };
+      obter_resumo_admin: { Args: Record<string, never>; Returns: AdminDashboardSummary };
+      listar_usuarios_admin: {
+        Args: { p_busca?: string | null; p_tipo?: AccountType | null; p_limite?: number };
+        Returns: AdminUserDirectoryEntry[];
+      };
+      listar_clientes_admin: {
+        Args: { p_barbearia_id: string; p_busca?: string | null; p_limite?: number };
+        Returns: AdminClientDirectoryEntry[];
+      };
+      admin_alterar_status_barbearia: {
+        Args: { p_barbearia_id: string; p_ativa: boolean };
+        Returns: Database["public"]["Tables"]["barbearias"]["Row"];
+      };
       atualizar_preferencias_comunicacao: {
         Args: { p_email: boolean; p_whatsapp: boolean; p_push: boolean; p_marketing: boolean };
         Returns: Database["public"]["Tables"]["usuarios"]["Row"];
