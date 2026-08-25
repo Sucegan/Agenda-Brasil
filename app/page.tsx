@@ -6,6 +6,7 @@ import { useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
+import { signupErrorMessage, validateSignupFields } from '@/lib/signup-validation';
 
 const subscribeToNothing = () => () => undefined;
 const getSupabase = async () => (await import('@/lib/supabase')).supabase;
@@ -58,6 +59,7 @@ function LoginForm() {
     try {
       const supabase = await getSupabase();
       if (isLogin) {
+        if (!email.trim() || !senha) throw new Error('Informe seu e-mail e sua senha.');
         const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
         if (error?.message.toLowerCase().includes('email not confirmed')) throw new Error('Seu e-mail ainda não foi confirmado. Use “Reenviar confirmação” abaixo.');
         if (error) throw new Error('E-mail ou senha incorretos.');
@@ -70,23 +72,24 @@ function LoginForm() {
         return;
       } else {
         if (website) throw new Error('Não foi possível concluir o cadastro.');
-        if (!nome || !telefone) throw new Error('Preencha todos os campos.');
-        if (senha.length < 6) throw new Error('A senha deve ter no mínimo 6 caracteres.');
+        const validation = validateSignupFields({ name: nome, phone: telefone, email, password: senha });
+        if (validation.error || !validation.data) throw new Error(validation.error ?? 'Revise os dados do cadastro.');
         if (!termsAccepted) throw new Error('Aceite os termos de uso e a política de privacidade.');
         if (isConviteBarbeiro && !conviteBarbeiro) throw new Error('Este convite de barbeiro é inválido. Peça um novo link ao responsável.');
+        const normalized = validation.data;
 
         // O Supabase Auth vai criar o usuário e a Trigger vai preencher a tabela usuarios sozinha
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email, 
-          password: senha,
+          email: normalized.email,
+          password: normalized.password,
           options: { 
             emailRedirectTo: `${window.location.origin}/dashboard`,
             captchaToken: captchaToken || undefined,
             data: { 
-              nome,
-              telefone,
-              full_name: nome,
-              display_name: nome,
+              nome: normalized.name,
+              telefone: normalized.phone,
+              full_name: normalized.name,
+              display_name: normalized.name,
               tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente',
               convite_barbeiro: conviteBarbeiro,
               termos_aceitos: true,
@@ -95,13 +98,8 @@ function LoginForm() {
         });
         
         if (authError) {
-          if (authError.message.includes('already registered')) {
-            throw new Error('Este e-mail já está cadastrado. Faça login.');
-          }
-          if (/(confirmation email|email.*(?:send|authorized)|rate limit)/i.test(authError.message)) {
-            throw new Error('Não foi possível enviar o e-mail de confirmação. O serviço de e-mail da barbearia precisa ser configurado.');
-          }
-          throw new Error(authError.message);
+          console.error('[auth:signup] failed', { code: authError.code, status: authError.status, message: authError.message });
+          throw new Error(signupErrorMessage(authError));
         }
 
         if (authData.session) {
@@ -110,7 +108,7 @@ function LoginForm() {
           return;
         }
 
-        const normalizedEmail = email.trim().toLowerCase();
+        const normalizedEmail = normalized.email;
         setConfirmationEmail(normalizedEmail);
         setConfirmationNotice('Solicitação enviada agora. A entrega pode levar alguns minutos.');
         setSenha('');
@@ -228,27 +226,29 @@ function LoginForm() {
         {!isLogin && (
           <div className="signup-fields space-y-4">
             <div className="relative">
-              <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
+              <label htmlFor="nome" className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><User size={18} /></div>
-                <input type="text" id="nome" name="nome" autoComplete="name" value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: João da Silva" className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
+                <input type="text" id="nome" name="nome" autoComplete="name" value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: João da Silva" required minLength={2} maxLength={120} aria-describedby="nome-ajuda" className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
               </div>
+              <p id="nome-ajuda" className="mt-1 text-[10px] text-zinc-600">Use pelo menos 2 caracteres.</p>
             </div>
             <div className="relative">
-              <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">WhatsApp</label>
+              <label htmlFor="telefone" className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">WhatsApp</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><Phone size={18} /></div>
-                <input type="tel" id="telefone" name="telefone" autoComplete="tel" value={telefone} onChange={handleTelefoneChange} placeholder="(00) 00000-0000" maxLength={15} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
+                <input type="tel" id="telefone" name="telefone" autoComplete="tel" inputMode="tel" value={telefone} onChange={handleTelefoneChange} placeholder="(00) 00000-0000" required minLength={14} maxLength={15} aria-describedby="telefone-ajuda" className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
               </div>
+              <p id="telefone-ajuda" className="mt-1 text-[10px] text-zinc-600">Informe DDD e número do WhatsApp.</p>
             </div>
           </div>
         )}
 
         <div className="relative">
-          <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">E-mail</label>
+          <label htmlFor="email" className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">E-mail</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><Mail size={18} /></div>
-            <input type="email" id="email" name="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" required className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
+            <input type="email" id="email" name="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" required maxLength={254} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
           </div>
         </div>
 
@@ -258,10 +258,10 @@ function LoginForm() {
         </>}
 
         <div className="relative">
-          <label className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Senha</label>
+          <label htmlFor="senha" className="mb-1.5 block text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Senha</label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500"><Lock size={18} /></div>
-            <input type={showPassword ? "text" : "password"} id="senha" name="senha" autoComplete={isLogin ? "current-password" : "new-password"} value={senha} onChange={e=>setSenha(e.target.value)} placeholder="••••••••" required className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 pr-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
+            <input type={showPassword ? "text" : "password"} id="senha" name="senha" autoComplete={isLogin ? "current-password" : "new-password"} value={senha} onChange={e=>setSenha(e.target.value)} placeholder="••••••••" required minLength={isLogin ? undefined : 6} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 pl-10 pr-10 p-3 text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-zinc-600" />
             <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex items-center px-3 text-emerald-500 transition-colors hover:text-emerald-400">
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>

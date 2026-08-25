@@ -61,6 +61,26 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
   await expect(page.locator('section[role="status"]').getByText(/Nova solicitação enviada/i)).toBeVisible();
 });
 
+test('signup blocks invalid profile data before calling Supabase', async ({ page }) => {
+  let signupRequests = 0;
+  await page.route('**/auth/v1/signup**', async (route) => {
+    signupRequests += 1;
+    await route.abort();
+  });
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: /Cadastre-se/i }).click();
+  await page.locator('input[name="nome"]').fill('s');
+  await page.locator('input[name="telefone"]').fill('18996582256');
+  await page.locator('input[name="email"]').fill('cliente.teste@example.com');
+  await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Cadastrar', exact: true }).click();
+
+  expect(await page.locator('input[name="nome"]').evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
+  expect(signupRequests).toBe(0);
+});
+
 test('web version does not expose install or update app surfaces', async ({ page, request }) => {
   await page.goto('/', { waitUntil: 'networkidle' });
 

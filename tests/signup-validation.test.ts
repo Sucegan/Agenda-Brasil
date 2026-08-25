@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { signupErrorMessage, validateSignupFields } from '../lib/signup-validation';
+
+test('signup validation rejects a one-character name before Supabase', () => {
+  const result = validateSignupFields({ name: 's', phone: '(18) 99658-2256', email: 'cliente@example.com', password: '123456' });
+  assert.equal(result.error, 'Informe seu nome completo com pelo menos 2 caracteres.');
+  assert.equal(result.data, null);
+});
+
+test('signup validation rejects an incomplete WhatsApp number', () => {
+  const result = validateSignupFields({ name: 'Sucegan', phone: '(18) 9999', email: 'cliente@example.com', password: '123456' });
+  assert.equal(result.error, 'Informe um WhatsApp válido com DDD.');
+});
+
+test('signup validation normalizes accepted identity fields', () => {
+  const result = validateSignupFields({ name: '  Igor   Sucegan ', phone: '(18) 99658-2256', email: '  CLIENTE@EXAMPLE.COM ', password: '123456' });
+  assert.equal(result.error, null);
+  assert.deepEqual(result.data, { name: 'Igor Sucegan', phone: '(18) 99658-2256', email: 'cliente@example.com', password: '123456' });
+});
+
+test('database signup failures are translated into a useful message', () => {
+  assert.equal(
+    signupErrorMessage({ code: 'unexpected_failure', message: 'Database error saving new user' }),
+    'Não foi possível criar o perfil. Confira o nome completo, o WhatsApp e tente novamente.',
+  );
+});
