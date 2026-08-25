@@ -13,6 +13,7 @@ import { BusinessGrowthSettings } from '@/components/business-growth-settings';
 import { CommunicationPreferences } from '@/components/communication-preferences';
 import { ReportTools } from '@/components/report-tools';
 import { NotificationHealth } from '@/components/notification-health';
+import { NotificationInbox } from '@/components/notification-inbox';
 import { ReviewLoyalty } from '@/components/review-loyalty';
 import { SiteRights } from '@/components/site-rights';
 import { ClientWaitlist, JoinWaitlistButton, ProfessionalWaitlist } from '@/components/waitlist-sections';
@@ -25,6 +26,7 @@ import type {
   Appointment, AppointmentStatus, Barber, Barbershop, BusinessDay, BusinessHoliday,
   PaymentStatus, PublicBarber, ScheduleBlock, Service, UserProfile,
 } from '@/lib/database.types';
+import { requestNotificationDelivery } from '@/lib/notification-client';
 
 const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'cancelado', 'nao_compareceu'];
 const paymentStatusLabels: Record<PaymentStatus, string> = {
@@ -203,12 +205,13 @@ export default function DashboardPage() {
   const [telefoneNegocio, setTelefoneNegocio] = useState('');
   const [logoNegocio, setLogoNegocio] = useState('');
   const [criandoBarbearia, setCriandoBarbearia] = useState(false);
+  const [salvandoNovaBarbearia, setSalvandoNovaBarbearia] = useState(false);
   const [novaBarbeariaNome, setNovaBarbeariaNome] = useState('');
   const [novaBarbeariaSlug, setNovaBarbeariaSlug] = useState('');
 
   const hoje = brazilDateISO();
 
-  const carregarDados = useCallback(async () => {
+  const carregarDados = useCallback(async (forcedBusinessId?: string) => {
     const { data: { user }, error: authError } = await withTimeout(
       supabase.auth.getUser(),
       DATA_LOAD_TIMEOUT_MS,
@@ -230,7 +233,7 @@ export default function DashboardPage() {
     setTelefonePerfil(perfil.telefone ?? '');
     if (perfil.tipo === 'cliente') {
       const { data: publicBusinesses, error: businessesError } = await supabase.rpc('listar_barbearias_publicas');
-      const selectedBusiness = publicBusinesses?.find((item) => item.id === barbeariaAtivaId) ?? publicBusinesses?.[0];
+      const selectedBusiness = publicBusinesses?.find((item) => item.id === (forcedBusinessId ?? barbeariaAtivaId)) ?? publicBusinesses?.[0];
       if (businessesError || !selectedBusiness) throw businessesError ?? new Error('Nenhuma barbearia pública disponível.');
       setBarbeariasPublicas(publicBusinesses ?? []);
       if (barbeariaAtivaId !== selectedBusiness.id) setBarbeariaAtivaId(selectedBusiness.id);
@@ -259,7 +262,8 @@ export default function DashboardPage() {
     const { data: businesses, error: businessesError } = await supabase.rpc('listar_minhas_barbearias');
     if (businessesError || !businesses?.length) throw businessesError ?? new Error('Nenhuma barbearia vinculada à sua conta.');
     setBarbearias(businesses);
-    const selectedBusinessId = businesses.some((item) => item.id === barbeariaAtivaId) ? barbeariaAtivaId! : businesses[0].id;
+    const requestedBusinessId = forcedBusinessId ?? barbeariaAtivaId;
+    const selectedBusinessId = businesses.some((item) => item.id === requestedBusinessId) ? requestedBusinessId! : businesses[0].id;
     if (barbeariaAtivaId !== selectedBusinessId) setBarbeariaAtivaId(selectedBusinessId);
     const [{ data: business, error: businessError }, { data: holidays, error: holidaysError }, { data: profissional, error: profissionalError }] = await Promise.all([
       supabase.from('barbearias').select('*').eq('id', selectedBusinessId).single(),
@@ -385,8 +389,9 @@ export default function DashboardPage() {
   const agendar = async () => {
     if (!selectedBarbeiro || !selectedServico || !selectedData || !selectedHorario) return toast.error('Escolha profissional, serviço, data e horário.');
     const toastId = toast.loading('Confirmando agendamento...');
-    const { error } = await supabase.rpc('criar_agendamento_com_origem', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: selectedData, p_horario: `${selectedHorario}:00`, p_origem: 'painel' });
-    if (error) return toast.error(error.message, { id: toastId });
+    const { data: appointment, error } = await supabase.rpc('criar_agendamento_com_origem', { p_barbeiro_id: selectedBarbeiro.id, p_servico_id: selectedServico.id, p_data: selectedData, p_horario: `${selectedHorario}:00`, p_origem: 'painel' });
+    if (error || !appointment) return toast.error(error?.message ?? 'Não foi possível concluir o agendamento.', { id: toastId });
+    await requestNotificationDelivery(appointment.id);
     setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario(''); setHorariosDisponiveis([]);
     await carregarDados();
     toast.success('Agendamento realizado! A confirmação do horário abre 24h antes.', { id: toastId });
@@ -396,6 +401,7 @@ export default function DashboardPage() {
     const toastId = toast.loading('Confirmando horário...');
     const { error } = await supabase.rpc('confirmar_meu_agendamento', { p_agendamento_id: id });
     if (error) return toast.error(error.message, { id: toastId });
+    await requestNotificationDelivery(id);
     await carregarDados();
     toast.success('Horário confirmado!', { id: toastId });
   };
@@ -406,6 +412,7 @@ export default function DashboardPage() {
     const toastId = toast.loading('Cancelando...');
     const { error } = await supabase.rpc('cancelar_meu_agendamento', { p_agendamento_id: id });
     if (error) return toast.error(error.message, { id: toastId });
+    await requestNotificationDelivery(id);
     await carregarDados();
     toast.success('Agendamento cancelado.', { id: toastId });
   };
@@ -413,6 +420,7 @@ export default function DashboardPage() {
   const atualizarStatus = async (id: number, status: AppointmentStatus) => {
     const { error } = await supabase.rpc('atualizar_status_agendamento', { p_agendamento_id: id, p_status: status });
     if (error) return toast.error(error.message);
+    await requestNotificationDelivery(id);
     await carregarDados();
     toast.success('Status atualizado.');
   };
@@ -560,17 +568,29 @@ export default function DashboardPage() {
 
   const criarNovaBarbearia = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (salvandoNovaBarbearia) return;
     const nome = novaBarbeariaNome.trim();
     const slug = novaBarbeariaSlug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     if (nome.length < 2 || slug.length < 3) return toast.error('Informe nome e identificador válidos.');
     const toastId = toast.loading('Criando barbearia...');
+    setSalvandoNovaBarbearia(true);
     const { data, error } = await supabase.rpc('criar_barbearia', { p_nome: nome, p_slug: slug });
-    if (error || !data) return toast.error(error?.message ?? 'Não foi possível criar a barbearia.', { id: toastId });
+    if (error || !data) {
+      setSalvandoNovaBarbearia(false);
+      return toast.error(error?.message ?? 'Não foi possível criar a barbearia.', { id: toastId });
+    }
     setNovaBarbeariaNome('');
     setNovaBarbeariaSlug('');
     setCriandoBarbearia(false);
     setBarbeariaAtivaId(data.id);
-    toast.success('Barbearia criada. Complete agora os dados e serviços.', { id: toastId });
+    try {
+      await carregarDados(data.id);
+      toast.success('Barbearia criada. Complete agora os dados e serviços.', { id: toastId });
+    } catch {
+      toast.error('A barbearia foi criada, mas o painel não recarregou. Atualize a página.', { id: toastId });
+    } finally {
+      setSalvandoNovaBarbearia(false);
+    }
   };
 
   const sair = async () => {
@@ -602,6 +622,7 @@ export default function DashboardPage() {
   const historicoCliente = agendamentos.filter((item) => !proximosCliente.some((proximo) => proximo.id === item.id));
   const diasOrdenados: BusinessDay[] = [0, 1, 2, 3, 4, 5, 6];
   const isBusinessOwner = Boolean(negocio && negocio.proprietario_id === usuario.id);
+  const isPlatformAdmin = barbearias.some((item) => item.proprietario_id === usuario.id);
 
   return (
     <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100 selection:bg-emerald-500/30">
@@ -610,7 +631,7 @@ export default function DashboardPage() {
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-xl font-black text-transparent sm:text-2xl">{negocio?.nome ?? 'Agenda Brasil'}</h1>
-            <p className="mt-0.5 truncate text-xs text-zinc-400">Olá, {usuario?.nome} <span className="ml-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-300">{usuario?.tipo}</span></p>
+            <p className="mt-0.5 truncate text-xs text-zinc-400">Olá, {usuario?.nome} <span className="ml-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-300">{usuario.tipo === 'barbeiro' && isPlatformAdmin ? 'administrador' : usuario.tipo}</span></p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={() => setPerfilAberto((open) => !open)} className="rounded-xl border border-zinc-800 bg-zinc-900 p-2.5 text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300" aria-label="Abrir perfil"><UserCog size={17} /></button>
@@ -629,7 +650,7 @@ export default function DashboardPage() {
             </label>
           </section>
         )}
-        {usuario?.tipo === 'barbeiro' && (
+        {usuario?.tipo === 'barbeiro' && (isPlatformAdmin || barbearias.length > 1) && (
           <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Barbearia ativa
@@ -637,13 +658,14 @@ export default function DashboardPage() {
                   {barbearias.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
                 </select>
               </label>
-              <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>
+              {isPlatformAdmin && <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>}
             </div>
             {criandoBarbearia && (
               <form onSubmit={criarNovaBarbearia} className="mt-4 grid gap-3 border-t border-zinc-800 pt-4 sm:grid-cols-2">
                 <label className="text-xs font-bold text-zinc-400">NOME<input value={novaBarbeariaNome} onChange={(event) => { const value = event.target.value; setNovaBarbeariaNome(value); setNovaBarbeariaSlug(value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')); }} placeholder="Ex.: Barbearia Central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
-                <label className="text-xs font-bold text-zinc-400">IDENTIFICADOR DO LINK<input value={novaBarbeariaSlug} onChange={(event) => setNovaBarbeariaSlug(event.target.value)} placeholder="barbearia-central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
-                <button className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-500 sm:col-span-2">Criar e configurar barbearia</button>
+                <label className="text-xs font-bold text-zinc-400">IDENTIFICADOR DO LINK<input value={novaBarbeariaSlug} onChange={(event) => setNovaBarbeariaSlug(event.target.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))} placeholder="barbearia-central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
+                <p className="text-xs text-zinc-500 sm:col-span-2">A nova unidade começará privada. Cadastre serviços e regras antes de ativar o link público.</p>
+                <button disabled={salvandoNovaBarbearia} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-500 disabled:opacity-50 sm:col-span-2">{salvandoNovaBarbearia ? 'Criando...' : 'Criar e configurar barbearia'}</button>
               </form>
             )}
           </section>
@@ -663,6 +685,7 @@ export default function DashboardPage() {
 
         {usuario?.tipo === 'cliente' && (
           <div className="space-y-5">
+            {negocio && <NotificationInbox userId={usuario.id} barbershopId={negocio.id} />}
             <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl sm:p-6">
               <div className="mb-5 flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={21} /> Novo agendamento</h2>{step > 1 && <button onClick={() => { setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario(''); }} className="text-xs font-bold text-zinc-400 hover:text-white">Reiniciar</button>}</div>
               {step === 1 && <><p className="mb-3 text-sm text-zinc-400">Escolha o profissional.</p><div className="grid gap-3 sm:grid-cols-2">{barbeiros.map((profissional) => <button key={profissional.id} onClick={() => { setSelectedBarbeiro(profissional); setSelectedServico(null); setStep(2); }} className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 text-left hover:border-emerald-500/50"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/10 font-black text-emerald-300">{profissional.nome.charAt(0).toUpperCase()}</span><span><b className="block text-white">{profissional.nome}</b><small className="text-zinc-500">{formatWorkDays(profissional.dias_trabalho)}</small></span></button>)}{barbeiros.length === 0 && <p className="text-sm text-zinc-500">Nenhum profissional disponível ainda.</p>}</div></>}
@@ -684,13 +707,13 @@ export default function DashboardPage() {
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Agenda de hoje</h2><div className="space-y-3">{agendaHoje.length ? agendaHoje.map((item) => <AppointmentItem key={item.id} item={item} role="barbeiro" onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Nenhum cliente agendado para hoje.</p>}</div></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><BarChart3 className="text-amber-400" size={20} /> Relatório do mês</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatCard label="Realizado" value={formatCurrency(relatorioMes.receitas)} icon={Wallet} /><StatCard label="Ticket médio" value={formatCurrency(relatorioMes.ticket)} icon={TrendingUp} color="amber" /><StatCard label="Serviço favorito" value={relatorioMes.favorito ? `${relatorioMes.favorito[0]} (${relatorioMes.favorito[1]})` : 'Sem dados'} icon={Award} color="blue" /><StatCard label="Cliente frequente" value={relatorioMes.frequente ? `${relatorioMes.frequente[0]} (${relatorioMes.frequente[1]})` : 'Sem dados'} icon={Users} color="orange" /></div></section>
             <ReportTools appointments={agendamentos} />
-            <NotificationHealth barbershopId={barbeiro.barbearia_id} />
+            {isBusinessOwner && <NotificationHealth barbershopId={barbeiro.barbearia_id} />}
             <ReviewLoyalty role="barbeiro" appointments={agendamentos} barberId={barbeiro.id} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Clock className="text-emerald-400" size={20} /> Expediente</h2><form onSubmit={salvarExpediente} className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={horarioInicio} onChange={(event) => setHorarioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={horarioFim} onChange={(event) => setHorarioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><button className="self-end rounded-xl bg-emerald-600 p-3 font-bold hover:bg-emerald-500">Salvar expediente</button></div><div className="flex flex-wrap gap-2">{diasOrdenados.map((dia) => <button key={dia} type="button" onClick={() => setDiasTrabalho((atual) => atual.includes(dia) ? atual.filter((item) => item !== dia) : [...atual, dia].sort((a, b) => a - b) as BusinessDay[])} className={`rounded-lg border px-3 py-2 text-xs font-bold ${diasTrabalho.includes(dia) ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}>{weekdayLabels[dia]}</button>)}</div></form></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-2 flex items-center gap-2 text-lg font-black"><Clock className="text-amber-400" size={20} /> Intervalo diário de almoço</h2><p className="mb-4 text-sm text-zinc-500">Esse período será bloqueado automaticamente em todos os dias de expediente. Para remover, deixe os dois campos vazios e salve.</p><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={almocoInicio} onChange={(event) => setAlmocoInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={almocoFim} onChange={(event) => setAlmocoFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><button type="button" onClick={() => { void salvarAlmoco(); }} className="self-end rounded-xl bg-amber-500 p-3 font-bold text-zinc-950 hover:bg-amber-400">Salvar almoço</button></div></section>
             <section className="grid gap-5 lg:grid-cols-2">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Umbrella className="text-blue-400" size={20} /> Bloquear agenda</h2><form onSubmit={salvarBloqueio} className="space-y-3"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">TIPO<select value={bloqueioTipo} onChange={(event) => setBloqueioTipo(event.target.value as typeof bloqueioTipo)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none"><option value="pausa">Pausa</option><option value="folga">Folga</option><option value="ferias">Férias</option></select></label><label className="text-xs font-bold text-zinc-400">MOTIVO<input value={bloqueioMotivo} onChange={(event) => setBloqueioMotivo(event.target.value)} placeholder="Ex.: Almoço" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">DATA INICIAL<input type="date" value={bloqueioInicio} onChange={(event) => setBloqueioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">DATA FINAL<input type="date" value={bloqueioFim} onChange={(event) => setBloqueioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>{bloqueioTipo === 'pausa' && <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">INÍCIO<input type="time" value={bloqueioHoraInicio} onChange={(event) => setBloqueioHoraInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">FIM<input type="time" value={bloqueioHoraFim} onChange={(event) => setBloqueioHoraFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>}<button className="w-full rounded-xl bg-blue-600 py-3 font-bold hover:bg-blue-500">Bloquear período</button></form><div className="mt-4 space-y-2">{bloqueios.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span><b className="uppercase text-blue-300">{item.tipo}</b> · {formatDate(item.data_inicio)}{item.data_fim !== item.data_inicio && ` a ${formatDate(item.data_fim)}`} {item.hora_inicio && `· ${displayTime(item.hora_inicio)}-${displayTime(item.hora_fim ?? '')}`}<small className="ml-2 text-zinc-500">{item.motivo}</small></span><button onClick={() => { void removerBloqueio(item.id); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button></div>)}{!bloqueios.length && <p className="text-xs text-zinc-500">Nenhum bloqueio cadastrado.</p>}</div></div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarX2 className="text-orange-400" size={20} /> Feriados</h2><form onSubmit={salvarFeriado} className="space-y-3"><label className="block text-xs font-bold text-zinc-400">DATA<input type="date" value={feriadoData} onChange={(event) => setFeriadoData(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="block text-xs font-bold text-zinc-400">DESCRIÇÃO<input value={feriadoDescricao} onChange={(event) => setFeriadoDescricao(event.target.value)} placeholder="Ex.: Natal" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><button className="w-full rounded-xl bg-orange-600 py-3 font-bold hover:bg-orange-500">Salvar feriado</button></form><div className="mt-4 space-y-2">{feriados.map((item) => <div key={item.data} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span>{formatDate(item.data)} <b className="ml-2 text-orange-200">{item.descricao}</b></span><button onClick={() => { void removerFeriado(item.data); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button></div>)}{!feriados.length && <p className="text-xs text-zinc-500">Nenhum feriado cadastrado.</p>}</div></div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarX2 className="text-orange-400" size={20} /> Feriados</h2>{isBusinessOwner && <form onSubmit={salvarFeriado} className="space-y-3"><label className="block text-xs font-bold text-zinc-400">DATA<input type="date" value={feriadoData} onChange={(event) => setFeriadoData(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="block text-xs font-bold text-zinc-400">DESCRIÇÃO<input value={feriadoDescricao} onChange={(event) => setFeriadoDescricao(event.target.value)} placeholder="Ex.: Natal" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><button className="w-full rounded-xl bg-orange-600 py-3 font-bold hover:bg-orange-500">Salvar feriado</button></form>}<div className="mt-4 space-y-2">{feriados.map((item) => <div key={item.data} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span>{formatDate(item.data)} <b className="ml-2 text-orange-200">{item.descricao}</b></span>{isBusinessOwner && <button onClick={() => { void removerFeriado(item.data); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button>}</div>)}{!feriados.length && <p className="text-xs text-zinc-500">Nenhum feriado cadastrado.</p>}</div></div>
             </section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2><form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> Adicionar serviço</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small></span><button onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20"><Trash2 size={16} /></button></div>)}</div></section>
             {isBusinessOwner && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Configurações da barbearia</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Nome<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Telefone<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Endereço<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">URL da logo<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><button className="rounded-xl bg-emerald-600 px-5 py-3 font-bold hover:bg-emerald-500 sm:col-span-2"><Building2 className="mr-1 inline" size={16} /> Salvar configurações</button></form>{negocio?.endereco && <p className="mt-4 flex items-center gap-2 text-xs text-zinc-500"><MapPin size={14} /> {negocio.endereco}</p>}</section>}

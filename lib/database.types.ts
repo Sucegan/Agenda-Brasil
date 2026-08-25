@@ -105,9 +105,9 @@ export interface Database {
         Relationships: [Relationship, Relationship, Relationship];
       };
       notificacoes: {
-        Row: { id: number; usuario_id: string | null; agendamento_id: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para: string; tentativas: number; payload: Record<string, unknown>; ultimo_erro: string | null; enviada_em: string | null; lease_id: string | null; lease_expires_at: string | null; created_at: string };
-        Insert: { id?: never; usuario_id?: string | null; agendamento_id?: number | null; canal: "email" | "whatsapp" | "push"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para?: string; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
-        Update: { status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
+        Row: { id: number; usuario_id: string | null; agendamento_id: number | null; canal: "email" | "whatsapp" | "push" | "in_app"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para: string; tentativas: number; payload: Record<string, unknown>; ultimo_erro: string | null; enviada_em: string | null; lida_em: string | null; lease_id: string | null; lease_expires_at: string | null; created_at: string };
+        Insert: { id?: never; usuario_id?: string | null; agendamento_id?: number | null; canal: "email" | "whatsapp" | "push" | "in_app"; tipo: "confirmacao" | "lembrete_24h" | "lembrete_2h" | "status" | "fila_espera"; status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; agendado_para?: string; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lida_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
+        Update: { status?: "pendente" | "processando" | "enviada" | "erro" | "ignorada"; tentativas?: number; payload?: Record<string, unknown>; ultimo_erro?: string | null; enviada_em?: string | null; lida_em?: string | null; lease_id?: string | null; lease_expires_at?: string | null };
         Relationships: [Relationship, Relationship];
       };
       booking_intents: {
@@ -205,6 +205,7 @@ export interface Database {
       listar_barbearias_publicas: { Args: Record<string, never>; Returns: Pick<Database["public"]["Tables"]["barbearias"]["Row"], "id" | "nome" | "slug" | "endereco" | "telefone" | "logo_url">[] };
       obter_barbearia_autenticada: { Args: { p_barbearia_id: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] | null };
       criar_barbearia: { Args: { p_nome: string; p_slug: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      marcar_notificacoes_lidas: { Args: { p_ids: number[] }; Returns: number };
       obter_status_cliente_barbearia: { Args: { p_barbearia_id: string }; Returns: { cliente_id: number; faltas: number; bloqueado_ate: string | null; pontos_fidelidade: number }[] };
       entrar_fila_espera: {
         Args: { p_barbeiro_id: number; p_servico_id: number; p_data: string; p_periodo?: "manha" | "tarde" | "noite" | "qualquer" };

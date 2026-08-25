@@ -9,6 +9,7 @@ type NotificationPayload = {
   data?: string;
   horario?: string;
   status?: string;
+  barbearia_nome?: string;
 };
 
 function messageFor(notification: Notification) {
@@ -40,11 +41,19 @@ async function deliverEmail(notification: Notification, message: string) {
     body: JSON.stringify({
       from,
       to: [data.user.email],
-      subject: notification.tipo === 'fila_espera' ? 'Horário disponível na Agenda Brasil' : 'Atualização do seu agendamento',
-      text: `${message}\n\nAcesse a Agenda Brasil para confirmar, cancelar ou consultar os detalhes.`,
+      subject: (notification.tipo === 'confirmacao'
+        ? `Agendamento recebido — ${(notification.payload as NotificationPayload).barbearia_nome ?? 'Agenda Brasil'}`
+        : notification.tipo === 'fila_espera'
+          ? 'Horário disponível — Agenda Brasil'
+          : 'Atualização do agendamento — Agenda Brasil').replace(/[\r\n]+/g, ' '),
+      text: `${message}\n\nConsulte os detalhes e o status diretamente no painel da Agenda Brasil.\n${process.env.NEXT_PUBLIC_APP_URL ?? 'https://agenda-brasil.vercel.app'}/dashboard`,
+      ...(process.env.NOTIFICATION_REPLY_TO ? { reply_to: process.env.NOTIFICATION_REPLY_TO } : {}),
     }),
   });
-  if (!response.ok) throw new Error(`Provedor de e-mail respondeu ${response.status}.`);
+  if (!response.ok) {
+    const providerError = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(`Provedor de e-mail respondeu ${response.status}${providerError.message ? `: ${providerError.message}` : ''}.`);
+  }
 }
 
 async function deliverWhatsapp(notification: Notification, message: string) {

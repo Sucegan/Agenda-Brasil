@@ -56,6 +56,7 @@ function LoginForm() {
       const supabase = await getSupabase();
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+        if (error?.message.toLowerCase().includes('email not confirmed')) throw new Error('Seu e-mail ainda não foi confirmado. Use “Reenviar confirmação” abaixo.');
         if (error) throw new Error('E-mail ou senha incorretos.');
         
         toast.success('Login realizado!', { id: toastId });
@@ -106,7 +107,7 @@ function LoginForm() {
           return;
         }
 
-        toast.success('Conta criada! Verifique seu e-mail para confirmar.', { id: toastId });
+        toast.success('Conta criada! Verifique a caixa de entrada, Spam e Promoções.', { id: toastId });
         window.setTimeout(() => {
           setPreferirLogin(true);
           setSenha('');
@@ -138,6 +139,19 @@ function LoginForm() {
     } catch {
       toast.error('Não foi possível enviar o link. Verifique sua conexão e o e-mail informado.', { id: toastId });
     }
+  };
+
+  const reenviarConfirmacao = async () => {
+    if (!email.trim()) return toast.error('Informe o e-mail da conta.');
+    const toastId = toast.loading('Reenviando confirmação...');
+    const supabase = await getSupabase();
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+    });
+    if (error) return toast.error('Não foi possível reenviar agora. Aguarde alguns minutos e tente novamente.', { id: toastId });
+    toast.success('E-mail reenviado. Confira também Spam e Promoções.', { id: toastId });
   };
 
   return (
@@ -214,9 +228,10 @@ function LoginForm() {
         </button>
 
         {isLogin && (
-          <button type="button" onClick={() => { void solicitarRecuperacaoSenha(); }} className="w-full text-center text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
-            Esqueci minha senha
-          </button>
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-medium text-emerald-400">
+            <button type="button" onClick={() => { void solicitarRecuperacaoSenha(); }} className="hover:text-emerald-300 transition-colors">Esqueci minha senha</button>
+            <button type="button" onClick={() => { void reenviarConfirmacao(); }} className="hover:text-emerald-300 transition-colors">Reenviar confirmação</button>
+          </div>
         )}
       </form>
 

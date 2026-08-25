@@ -4,6 +4,7 @@ test('login and public booking entry points fit the viewport', async ({ page }) 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Agenda Brasil' })).toBeVisible();
   await expect(page.getByRole('link', { name: /Agendar sem senha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Reenviar confirmação/i })).toBeVisible();
   const viewport = page.viewportSize();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(viewport?.width ?? width);

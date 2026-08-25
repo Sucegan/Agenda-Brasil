@@ -36,7 +36,9 @@ npm run test:db
 
 A rota `/api/cron/notifications` processa a tabela `notificacoes`. Na Vercel, `vercel.json` agenda essa rota uma vez por dia. Outros provedores podem chamar a mesma rota com `Authorization: Bearer $CRON_SECRET`.
 
-- E-mail: configure uma conta Resend, domínio validado, `RESEND_API_KEY` e `NOTIFICATION_EMAIL_FROM`.
+- E-mail de autenticação: a integração Resend do Supabase cobre confirmação de cadastro, magic link e recuperação de senha.
+- E-mail de agendamento: configure também na Vercel `RESEND_API_KEY`, `NOTIFICATION_EMAIL_FROM` e, opcionalmente, `NOTIFICATION_REPLY_TO`. O sistema tenta enviar confirmações imediatamente e mantém o cron diário como recuperação da fila.
+- Entregabilidade: use remetente de domínio próprio verificado no Resend e publique SPF, DKIM e DMARC. Evite remetentes gratuitos ou domínios diferentes dos links do site.
 - WhatsApp: configure Meta WhatsApp Cloud API, `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`. Para mensagens iniciadas pelo negócio, cadastre um template aprovado e informe `WHATSAPP_TEMPLATE_NAME`.
 
 Sem essas credenciais a agenda continua funcionando; os itens permanecem registrados para diagnóstico e não são enviados.

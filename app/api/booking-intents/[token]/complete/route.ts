@@ -4,6 +4,7 @@ import type { Database } from '@/lib/database.types';
 import { publicSupabaseAnonKey, publicSupabaseUrl } from '@/lib/public-env';
 import { consumeRateLimit, isSameSiteRequest } from '@/lib/server/request-protection';
 import { getAuthenticatedUser } from '@/lib/server/supabase-admin';
+import { flushEmailNotifications } from '@/lib/server/notification-queue';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,5 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   if (result.error) return NextResponse.json({ error: result.error.message }, { status: 409 });
   await admin.from('booking_intents').update({ consumed_at: new Date().toISOString() }).eq('token', token).is('consumed_at', null);
-  return NextResponse.json({ completed: true, action: intent.action }, { headers: { 'Cache-Control': 'no-store' } });
+  const appointmentId = intent.action === 'book' ? result.data.id : undefined;
+  if (appointmentId) await flushEmailNotifications(admin, user.id, appointmentId);
+  return NextResponse.json({ completed: true, action: intent.action, appointmentId }, { headers: { 'Cache-Control': 'no-store' } });
 }

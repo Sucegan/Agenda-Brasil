@@ -46,6 +46,9 @@ async function main() {
   });
   assert.ok(blockError, 'Anonymous users must not create schedule blocks.');
 
+  const { error: notificationReadError } = await anonymous.rpc('marcar_notificacoes_lidas', { p_ids: [] });
+  assert.ok(notificationReadError, 'Anonymous users must not update in-app notifications.');
+
   const { data: telemetry, error: telemetryError } = await anonymous.from('telemetria_eventos').select('id').limit(1);
   assert.equal(telemetryError, null, 'Telemetry probe should be filtered by RLS.');
   assert.equal(telemetry?.length, 0, 'Anonymous users must not see telemetry rows.');

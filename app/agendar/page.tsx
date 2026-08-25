@@ -9,6 +9,7 @@ import { SiteRights } from '@/components/site-rights';
 import { supabase } from '@/lib/supabase';
 import { displayTime, formatCurrency, formatWorkDays, upcomingDays, type DayChoice } from '@/lib/scheduling';
 import type { AccountType, PublicBarber, PublicCatalog, Service } from '@/lib/database.types';
+import { requestNotificationDelivery } from '@/lib/notification-client';
 
 type PendingBooking = {
   action: 'book' | 'waitlist';
@@ -58,14 +59,15 @@ export default function PublicBookingPage() {
   const completeAction = useCallback(async (pending: PendingBooking) => {
     const toastId = toast.loading(pending.action === 'book' ? 'Finalizando agendamento...' : 'Entrando na fila de espera...');
     if (pending.action === 'book' && pending.time) {
-      const { error } = await supabase.rpc('criar_agendamento_com_origem', {
+      const { data: appointment, error } = await supabase.rpc('criar_agendamento_com_origem', {
         p_barbeiro_id: pending.barberId,
         p_servico_id: pending.serviceId,
         p_data: pending.date,
         p_horario: `${pending.time}:00`,
         p_origem: 'link_publico',
       });
-      if (error) return toast.error(error.message, { id: toastId });
+      if (error || !appointment) return toast.error(error?.message ?? 'Não foi possível concluir o agendamento.', { id: toastId });
+      await requestNotificationDelivery(appointment.id);
       setFinished('book');
     } else {
       const { error } = await supabase.rpc('entrar_fila_espera', {
@@ -316,7 +318,7 @@ export default function PublicBookingPage() {
               </div>
             )}
             {!isProfessionalSession && (magicLinkSent ? (
-              <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4 text-sm text-blue-200"><Mail className="mr-2 inline" size={17} /> Abra o link enviado ao seu e-mail neste mesmo navegador para concluir. O link é válido por 30 minutos.</div>
+              <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4 text-sm text-blue-200"><Mail className="mr-2 inline" size={17} /> Abra o link enviado ao seu e-mail neste mesmo navegador para concluir. O link é válido por 30 minutos. Se não aparecer, confira Spam e Promoções.</div>
             ) : (
               <button disabled={submitting} onClick={() => { void authenticateOrComplete(time ? 'book' : 'waitlist'); }} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"><Clock size={18} /> {submitting ? 'Preparando com segurança...' : time ? 'Reservar horário' : 'Entrar na fila de espera'}</button>
             ))}
