@@ -12,6 +12,19 @@ declare
   v_client_id bigint;
   v_appointment_id bigint;
 begin
+  if not has_column_privilege('authenticated', 'public.avaliacoes', 'nota', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.avaliacoes', 'qualidade', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.avaliacoes', 'atendimento', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.avaliacoes', 'pontualidade', 'UPDATE')
+    or not has_column_privilege('authenticated', 'public.avaliacoes', 'recomendaria', 'UPDATE') then
+    raise exception 'Cliente autenticado não recebeu permissão para editar os campos de feedback';
+  end if;
+  if has_column_privilege('authenticated', 'public.avaliacoes', 'usuario_id', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.avaliacoes', 'agendamento_id', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.avaliacoes', 'barbeiro_id', 'UPDATE') then
+    raise exception 'Avaliação permite alterar identidade, atendimento ou profissional';
+  end if;
+
   select x.proprietario_id into v_admin from public.barbearias x order by x.created_at limit 1;
   if v_admin is null then raise exception 'Administrador de teste não encontrado'; end if;
   if not exists (select 1 from public.usuarios u where u.id = v_admin and u.tipo = 'admin') then

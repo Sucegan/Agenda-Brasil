@@ -123,9 +123,9 @@ export interface Database {
         Relationships: [];
       };
       avaliacoes: {
-        Row: { id: number; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario: string | null; created_at: string; updated_at: string };
-        Insert: { id?: never; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario?: string | null; created_at?: string; updated_at?: string };
-        Update: { nota?: number; comentario?: string | null; updated_at?: string };
+        Row: { id: number; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario: string | null; qualidade: number | null; atendimento: number | null; pontualidade: number | null; recomendaria: boolean | null; created_at: string; updated_at: string };
+        Insert: { id?: never; agendamento_id: number; usuario_id: string; barbeiro_id: number; nota: number; comentario?: string | null; qualidade?: number | null; atendimento?: number | null; pontualidade?: number | null; recomendaria?: boolean | null; created_at?: string; updated_at?: string };
+        Update: { nota?: number; comentario?: string | null; qualidade?: number | null; atendimento?: number | null; pontualidade?: number | null; recomendaria?: boolean | null; updated_at?: string };
         Relationships: [Relationship, Relationship, Relationship];
       };
       push_subscriptions: {
