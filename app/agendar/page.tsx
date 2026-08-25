@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { ArrowLeft, CalendarDays, CheckCircle2, Clock, Mail, MapPin, Scissors, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { BusinessBrandIcon, businessBrandStyle } from '@/components/business-brand';
 import { Captcha } from '@/components/captcha';
 import { SiteRights } from '@/components/site-rights';
+import { OnlinePaymentButton } from '@/components/online-payment-button';
 import { supabase } from '@/lib/supabase';
 import { displayTime, formatCurrency, formatWorkDays, upcomingDays, type DayChoice } from '@/lib/scheduling';
-import type { AccountType, PublicBarber, PublicCatalog, Service } from '@/lib/database.types';
+import type { AccountType, AvailableSlot, PublicBarber, PublicCatalog, PublicMonthlyPlan, Service } from '@/lib/database.types';
 import { requestNotificationDelivery } from '@/lib/notification-client';
 
 type PendingBooking = {
@@ -41,7 +43,8 @@ export default function PublicBookingPage() {
   const [service, setService] = useState<Service | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [slots, setSlots] = useState<string[]>([]);
+  const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [plans, setPlans] = useState<PublicMonthlyPlan[]>([]);
   const [checkingSlots, setCheckingSlots] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -53,7 +56,7 @@ export default function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [finished, setFinished] = useState<'book' | 'waitlist' | null>(null);
   const resumedIntent = useRef<string | null>(null);
-  const days = useMemo<DayChoice[]>(() => upcomingDays(45), []);
+  const days = useMemo<DayChoice[]>(() => upcomingDays(catalog?.negocio?.horizonte_agendamento_dias ?? 45), [catalog?.negocio?.horizonte_agendamento_dias]);
   const holidays = useMemo(() => new Map(catalog?.feriados.map((holiday) => [holiday.data, holiday.descricao]) ?? []), [catalog]);
 
   const completeAction = useCallback(async (pending: PendingBooking) => {
@@ -122,13 +125,15 @@ export default function PublicBookingPage() {
     let active = true;
     const initialize = async () => {
       const requestedSlug = new URLSearchParams(window.location.search).get('estabelecimento')?.trim().toLowerCase() || 'agenda-brasil';
-      const [{ data, error }, { data: userData, error: userError }] = await Promise.all([
+      const [{ data, error }, { data: publicPlans }, { data: userData, error: userError }] = await Promise.all([
         supabase.rpc('obter_catalogo_publico', { p_slug: requestedSlug }),
+        supabase.rpc('listar_planos_publicos', { p_slug: requestedSlug }),
         supabase.auth.getUser(),
       ]);
       if (!active) return;
       if (error || !data) toast.error(error?.message ?? 'Não foi possível carregar a agenda.');
       else setCatalog(data);
+      setPlans(publicPlans ?? []);
       if (userError) await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
       const userId = userError ? null : userData.user?.id ?? null;
       let accountType: AccountType | null = null;
@@ -178,21 +183,47 @@ export default function PublicBookingPage() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, [completeAction, completeIntent]);
 
+  const refreshSlots = useCallback(async (selectedDate: string, foreground = false) => {
+    if (!barber || !service || holidays.has(selectedDate)) return;
+    if (foreground) setCheckingSlots(true);
+    const { data: available, error } = await supabase.rpc('buscar_horarios_disponiveis', {
+      p_barbeiro_id: barber.id,
+      p_servico_id: service.id,
+      p_data: selectedDate,
+    });
+    if (foreground) setCheckingSlots(false);
+    if (error) {
+      if (foreground) toast.error(error.message);
+      return;
+    }
+    const nextSlots = available ?? [];
+    setSlots(nextSlots);
+    if (time && !nextSlots.some((slot) => displayTime(slot.horario) === time)) {
+      setTime('');
+      toast('O horário selecionado acabou de ser ocupado. Escolha outro.', { icon: '↻' });
+    }
+  }, [barber, holidays, service, time]);
+
   const selectDate = async (choice: DayChoice) => {
     if (!barber || !service || holidays.has(choice.iso)) return;
     setDate(choice.iso);
     setTime('');
     setSlots([]);
-    setCheckingSlots(true);
-    const { data, error } = await supabase.rpc('buscar_horarios_disponiveis', {
-      p_barbeiro_id: barber.id,
-      p_servico_id: service.id,
-      p_data: choice.iso,
-    });
-    setCheckingSlots(false);
-    if (error) return toast.error(error.message);
-    setSlots((data ?? []).map((slot) => displayTime(slot.horario)));
+    await refreshSlots(choice.iso, true);
   };
+
+  useEffect(() => {
+    if (!date || !barber || !service) return;
+    const refresh = () => { if (document.visibilityState === 'visible') void refreshSlots(date); };
+    const interval = window.setInterval(refresh, 45_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [barber, date, refreshSlots, service]);
 
   const buildPending = (action: 'book' | 'waitlist'): PendingBooking | null => {
     if (!barber || !service || !date || (action === 'book' && !time)) return null;
@@ -212,7 +243,7 @@ export default function PublicBookingPage() {
     const pending = buildPending(action);
     if (!pending) return toast.error('Complete as escolhas antes de continuar.');
     if (sessionUserId && sessionAccountType === 'cliente') return completeAction(pending);
-    if (sessionUserId && sessionAccountType === 'barbeiro') {
+    if (sessionUserId && sessionAccountType && sessionAccountType !== 'cliente') {
       return toast.error('Sua conta é profissional. Saia dela nesta página para continuar como cliente.');
     }
     if (pending.identity.name.length < 2 || pending.identity.phone.replace(/\D/g, '').length < 10 || !pending.identity.email.includes('@')) {
@@ -274,19 +305,22 @@ export default function PublicBookingPage() {
 
   const filteredServices = catalog.servicos.filter((item) => item.barbeiro_id === barber?.id);
   const isAuthenticatedClient = Boolean(sessionUserId && sessionAccountType === 'cliente');
-  const isProfessionalSession = Boolean(sessionUserId && sessionAccountType === 'barbeiro');
+  const isProfessionalSession = Boolean(sessionUserId && sessionAccountType && sessionAccountType !== 'cliente');
+  const brandStyle = businessBrandStyle(catalog.negocio.cor_primaria, catalog.negocio.cor_secundaria);
   return (
-    <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100">
+    <main className="app-screen app-shell safe-page-bottom text-zinc-100" style={brandStyle}>
       <Toaster position="top-center" />
-      <header className="safe-header border-b border-zinc-800 px-4 pb-4">
+      <header className="safe-header sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 px-4 pb-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Agendamento online</p><h1 className="text-xl font-black">{catalog.negocio.nome}</h1></div>
-          <Link href="/" className="flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-xs font-bold text-zinc-300"><ArrowLeft size={15} /> Entrar</Link>
+          <div className="flex min-w-0 items-center gap-3"><span className="brand-icon"><BusinessBrandIcon icon={catalog.negocio.icone} size={20} /></span><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--brand-primary)' }}>Agendamento online</p><h1 className="truncate text-xl font-black">{catalog.negocio.nome}</h1></div></div>
+          <div className="flex shrink-0 gap-2"><Link href="/estabelecimentos" className="hidden items-center rounded-xl border border-zinc-800 px-3 py-2 text-xs font-bold text-zinc-300 sm:flex">Trocar local</Link><Link href="/" className="flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-xs font-bold text-zinc-300"><ArrowLeft size={15} /> Entrar</Link></div>
         </div>
       </header>
 
       <section className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
         {(catalog.negocio.endereco || catalog.negocio.telefone) && <div className="flex flex-wrap gap-3 text-xs text-zinc-400">{catalog.negocio.endereco && <span className="flex items-center gap-1"><MapPin size={14} /> {catalog.negocio.endereco}</span>}{catalog.negocio.telefone && <span>{catalog.negocio.telefone}</span>}</div>}
+
+        {plans.length > 0 && <section className="brand-surface panel-card p-5"><div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: 'var(--brand-secondary)' }}>Economize todo mês</p><h2 className="mt-1 text-lg font-black">Planos disponíveis</h2></div><CalendarDays style={{ color: 'var(--brand-secondary)' }} /></div><div className="mt-4 flex gap-3 overflow-x-auto pb-1">{plans.map((plan) => <article key={plan.id} className="flex min-w-[230px] flex-1 flex-col rounded-2xl border border-zinc-800 bg-zinc-950/65 p-4"><p className="font-black">{plan.nome}</p><p className="mt-1 text-xl font-black" style={{ color: 'var(--brand-primary)' }}>{formatCurrency(Number(plan.preco))}<span className="text-xs font-medium text-zinc-500">/mês</span></p><p className="mt-2 text-xs text-zinc-400">{plan.atendimentos_inclusos} atendimento(s) incluído(s)</p>{plan.descricao && <p className="mt-2 flex-1 text-xs leading-5 text-zinc-500">{plan.descricao}</p>}{sessionUserId && sessionAccountType === 'cliente' ? <OnlinePaymentButton planId={plan.id} className="mt-4 w-full" /> : <Link href="/" className="secondary-button mt-4 w-full">Entre como cliente para assinar</Link>}</article>)}</div><p className="mt-3 text-xs text-zinc-500">Assinaturas usam checkout seguro. Pagamentos recorrentes são feitos por cartão; Pix aparece quando estiver disponível para o tipo de cobrança.</p></section>}
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
           <h2 className="mb-4 flex items-center gap-2 font-black"><Users className="text-emerald-400" size={20} /> 1. Escolha o profissional</h2>
@@ -295,7 +329,15 @@ export default function PublicBookingPage() {
 
         {barber && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><Scissors className="text-amber-400" size={20} /> 2. Escolha o serviço</h2><div className="grid gap-3 sm:grid-cols-3">{filteredServices.map((item) => <button key={item.id} onClick={() => { setService(item); setDate(''); setSlots([]); }} className={`rounded-xl border p-4 text-left ${service?.id === item.id ? 'border-amber-400 bg-amber-500/10' : 'border-zinc-800 bg-zinc-950/50'}`}><b className="block">{item.nome}</b><small className="text-zinc-400">{formatCurrency(Number(item.preco))} · {item.duracao} min</small></button>)}</div></section>}
 
-        {service && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><CalendarDays className="text-blue-400" size={20} /> 3. Escolha data e horário</h2><div className="flex gap-2 overflow-x-auto pb-3">{days.map((day) => { const holiday = holidays.get(day.iso); const disabled = !barber?.dias_trabalho.includes(day.businessDay) || Boolean(holiday); return <button key={day.iso} disabled={disabled} title={holiday} onClick={() => { void selectDate(day); }} className={`shrink-0 rounded-xl border px-3 py-2 text-xs disabled:opacity-30 ${date === day.iso ? 'border-blue-400 bg-blue-500 text-white' : 'border-zinc-700 bg-zinc-950'}`}><b className="block">{day.day} {day.month}</b><span>{day.weekday}</span></button>; })}</div>{checkingSlots && <p className="mt-4 animate-pulse text-sm text-zinc-400">Consultando horários...</p>}{date && !checkingSlots && slots.length > 0 && <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-7">{slots.map((slot) => <button key={slot} onClick={() => setTime(slot)} className={`rounded-lg border py-2 text-sm font-bold ${time === slot ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950'}`}>{slot}</button>)}</div>}{date && !checkingSlots && slots.length === 0 && <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4"><p className="text-sm text-amber-200">Sem horários livres. Entre na fila e avisaremos quando houver uma vaga.</p><select value={period} onChange={(event) => setPeriod(event.target.value as typeof period)} className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3"><option value="qualquer">Qualquer período</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></select></div>}</section>}
+        {service && <section className="panel-card p-5">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><h2 className="flex items-center gap-2 font-black"><CalendarDays className="text-blue-400" size={20} /> 3. Escolha data e horário</h2><span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-200">{service.duracao} min reservados</span></div>
+          <p className="mt-2 text-xs text-zinc-500">Mostramos apenas horários em que o serviço inteiro cabe antes do próximo compromisso, almoço ou encerramento.</p>
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-3">{days.map((day) => { const holiday = holidays.get(day.iso); const disabled = !barber?.dias_trabalho.includes(day.businessDay) || Boolean(holiday); return <button key={day.iso} disabled={disabled} title={holiday} onClick={() => { void selectDate(day); }} className={`shrink-0 rounded-xl border px-3 py-2 text-xs disabled:opacity-30 ${date === day.iso ? 'border-blue-400 bg-blue-500 text-white' : 'border-zinc-700 bg-zinc-950'}`}><b className="block">{day.day} {day.month}</b><span>{day.weekday}</span></button>; })}</div>
+          {checkingSlots && <p className="mt-4 animate-pulse text-sm text-zinc-400">Consultando horários...</p>}
+          {date && !checkingSlots && slots.length > 0 && <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">{slots.map((slot) => { const start = displayTime(slot.horario); const end = displayTime(slot.horario_fim); return <button key={slot.horario} onClick={() => setTime(start)} aria-label={`Das ${start} às ${end}`} className={`rounded-xl border px-2 py-2.5 text-sm font-bold ${time === start ? 'text-zinc-950' : 'border-zinc-700 bg-zinc-950'}`} style={time === start ? { background: 'var(--brand-primary)', borderColor: 'var(--brand-primary)' } : undefined}><span className="block">{start}</span><small className="block text-[10px] font-medium opacity-70">até {end}</small></button>; })}</div>}
+          {date && !checkingSlots && slots.length === 0 && <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4"><p className="text-sm text-amber-200">Não há um intervalo completo disponível. Entre na fila e avisaremos quando houver uma vaga.</p><select value={period} onChange={(event) => setPeriod(event.target.value as typeof period)} className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3"><option value="qualquer">Qualquer período</option><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></select></div>}
+          {date && !checkingSlots && <p className="mt-3 text-[11px] text-zinc-600">Horários atualizados automaticamente a cada 45 segundos e ao voltar para esta aba.</p>}
+        </section>}
 
         {date && (time || slots.length === 0) && (
           <section className="rounded-2xl border border-emerald-500/25 bg-zinc-900/80 p-5 shadow-xl">
@@ -320,7 +362,7 @@ export default function PublicBookingPage() {
             {!isProfessionalSession && (magicLinkSent ? (
               <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/10 p-4 text-sm text-blue-200"><Mail className="mr-2 inline" size={17} /> Abra o link enviado ao seu e-mail neste mesmo navegador para concluir. O link é válido por 30 minutos. Se não aparecer, confira Spam e Promoções.</div>
             ) : (
-              <button disabled={submitting} onClick={() => { void authenticateOrComplete(time ? 'book' : 'waitlist'); }} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"><Clock size={18} /> {submitting ? 'Preparando com segurança...' : time ? 'Reservar horário' : 'Entrar na fila de espera'}</button>
+              <button disabled={submitting} onClick={() => { void authenticateOrComplete(time ? 'book' : 'waitlist'); }} className="primary-button mt-5 w-full"><Clock size={18} /> {submitting ? 'Preparando com segurança...' : time ? 'Reservar horário' : 'Entrar na fila de espera'}</button>
             ))}
             {time && catalog.negocio.sinal_percentual > 0 && <p className="mt-3 text-center text-xs text-zinc-500">Este serviço solicita sinal de {catalog.negocio.sinal_percentual}%. As instruções Pix aparecerão depois da reserva.</p>}
           </section>

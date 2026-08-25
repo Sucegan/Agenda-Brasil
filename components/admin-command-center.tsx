@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Activity, AlertTriangle, Banknote, Building2, CalendarCheck2, ExternalLink,
-  RefreshCw, Search, ShieldCheck, Star, Store, UserRoundCheck, Users, WalletCards,
+  RefreshCw, Search, Settings2, ShieldCheck, Star, Store, UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PlatformSettings } from '@/components/platform-settings';
 import type {
   AccountType, AdminClientDirectoryEntry, AdminDashboardSummary,
   AdminUserDirectoryEntry,
@@ -13,7 +14,7 @@ import type {
 import { formatCurrency, formatDate } from '@/lib/scheduling';
 import { supabase } from '@/lib/supabase';
 
-type AdminSection = 'visao-geral' | 'unidades' | 'acessos' | 'clientes' | 'financeiro';
+type AdminSection = 'visao-geral' | 'unidades' | 'acessos' | 'clientes' | 'financeiro' | 'plataforma';
 
 const sectionLabels: Record<AdminSection, string> = {
   'visao-geral': 'Visão geral',
@@ -21,10 +22,12 @@ const sectionLabels: Record<AdminSection, string> = {
   acessos: 'Acessos',
   clientes: 'Clientes',
   financeiro: 'Financeiro',
+  plataforma: 'Plataforma',
 };
 
 const roleLabels: Record<AccountType, string> = {
   admin: 'Administrador',
+  proprietario: 'Proprietário',
   barbeiro: 'Profissional',
   cliente: 'Cliente',
 };
@@ -80,6 +83,8 @@ export function AdminCommandCenter({
   const [loading, setLoading] = useState(true);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [changingUnitId, setChangingUnitId] = useState<string | null>(null);
+  const [changingOwnerUnitId, setChangingOwnerUnitId] = useState<string | null>(null);
+  const [changingUserId, setChangingUserId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const loadUsers = useCallback(async (search = '', role: AccountType | '' = '') => {
@@ -149,6 +154,35 @@ export function AdminCommandCenter({
       console.error('[admin:center] refresh failed', refreshError);
       toast.success('Status alterado. Atualize a página para recarregar os dados.');
     }
+  };
+
+  const changeUserRole = async (user: AdminUserDirectoryEntry, role: AccountType) => {
+    if (user.tipo === role) return;
+    if (!window.confirm(`Alterar o perfil de “${user.nome}” de ${roleLabels[user.tipo]} para ${roleLabels[role]}?`)) return;
+    setChangingUserId(user.id);
+    const { error: roleError } = await supabase.rpc('admin_atualizar_tipo_usuario', {
+      p_usuario_id: user.id,
+      p_tipo: role,
+    });
+    setChangingUserId(null);
+    if (roleError) return toast.error(roleError.message ?? 'Não foi possível alterar o perfil.');
+    await loadUsers(userSearch, userType);
+    toast.success('Perfil atualizado e registrado na auditoria.');
+  };
+
+  const assignOwner = async (barbershopId: string, ownerId: string) => {
+    if (!ownerId) return;
+    const owner = users.find((user) => user.id === ownerId);
+    if (!owner || !window.confirm(`Definir “${owner.nome}” como proprietário responsável por esta unidade?`)) return;
+    setChangingOwnerUnitId(barbershopId);
+    const { error: ownerError } = await supabase.rpc('admin_atribuir_proprietario_barbearia', {
+      p_barbearia_id: barbershopId,
+      p_proprietario_id: ownerId,
+    });
+    setChangingOwnerUnitId(null);
+    if (ownerError) return toast.error(ownerError.message ?? 'Não foi possível atribuir o proprietário.');
+    await Promise.all([loadSummary(), loadUsers(), onRefresh()]);
+    toast.success('Proprietário vinculado à unidade.');
   };
 
   const metrics = summary?.metricas;
@@ -221,6 +255,7 @@ export function AdminCommandCenter({
                     <div className="flex flex-wrap justify-end gap-1"><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${unit.ativa ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{unit.ativa ? 'Ativa' : 'Inativa'}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${unit.agendamento_publico ? 'bg-blue-500/15 text-blue-300' : 'bg-zinc-800 text-zinc-500'}`}>{unit.agendamento_publico ? 'Pública' : 'Privada'}</span></div>
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-white">{unit.profissionais}</b><small className="text-[10px] text-zinc-600">Equipe</small></div><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-white">{unit.agendamentos}</b><small className="text-[10px] text-zinc-600">Agenda</small></div><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-amber-200">{Number(unit.avaliacao_media).toFixed(1)}</b><small className="text-[10px] text-zinc-600">Nota</small></div></div>
+                  <label className="mt-3 block text-[10px] font-black uppercase tracking-wider text-zinc-600">Responsável da unidade<select value="" disabled={changingOwnerUnitId === unit.id} onChange={(event) => { void assignOwner(unit.id, event.target.value); }} className="mt-1.5 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-xs font-bold normal-case tracking-normal text-zinc-300 outline-none focus:border-violet-500 disabled:opacity-50"><option value="">Atribuir proprietário...</option>{users.filter((user) => user.tipo === 'proprietario' || user.tipo === 'admin').map((owner) => <option key={owner.id} value={owner.id}>{owner.nome} · {roleLabels[owner.tipo]}</option>)}</select></label>
                   <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => onSelectBarbershop(unit.id)} className="flex-1 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500">Gerenciar unidade</button>{unit.ativa && unit.agendamento_publico && <a href={`/agendar?estabelecimento=${encodeURIComponent(unit.slug)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-300" aria-label={`Abrir agenda pública de ${unit.nome}`}><ExternalLink size={15} /></a>}<button type="button" onClick={() => { void changeUnitStatus(unit.id, !unit.ativa, unit.nome); }} disabled={changingUnitId === unit.id} className={`rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50 ${unit.ativa ? 'border-red-500/25 text-red-300' : 'border-emerald-500/25 text-emerald-300'}`}>{changingUnitId === unit.id ? 'Salvando...' : unit.ativa ? 'Desativar' : 'Reativar'}</button></div>
                 </article>
               ))}
@@ -233,10 +268,10 @@ export function AdminCommandCenter({
             <div className="mb-4"><h3 className="text-lg font-black text-white">Usuários e permissões</h3><p className="mt-1 text-sm text-zinc-500">Diretório central de administradores, profissionais e clientes.</p></div>
             <form onSubmit={(event) => { event.preventDefault(); void loadUsers(userSearch, userType); }} className="mb-4 grid gap-2 sm:grid-cols-[1fr_180px_auto]">
               <label className="relative"><span className="sr-only">Buscar usuário</span><Search className="absolute left-3 top-3.5 text-zinc-600" size={16} /><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Nome, e-mail ou telefone" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-3 pl-9 pr-3 text-sm outline-none focus:border-violet-500" /></label>
-              <select value={userType} onChange={(event) => setUserType(event.target.value as AccountType | '')} aria-label="Filtrar por perfil" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-violet-500"><option value="">Todos os perfis</option><option value="admin">Administradores</option><option value="barbeiro">Profissionais</option><option value="cliente">Clientes</option></select>
+              <select value={userType} onChange={(event) => setUserType(event.target.value as AccountType | '')} aria-label="Filtrar por perfil" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-violet-500"><option value="">Todos os perfis</option><option value="admin">Administradores</option><option value="proprietario">Proprietários</option><option value="barbeiro">Profissionais</option><option value="cliente">Clientes</option></select>
               <button className="rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold hover:bg-violet-500">Buscar</button>
             </form>
-            {users.length ? <div className="overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Contato</th><th className="px-4 py-3">Perfil</th><th className="px-4 py-3">Cadastro</th></tr></thead><tbody className="divide-y divide-zinc-800">{users.map((user) => <tr key={user.id} className="bg-zinc-950/30"><td className="px-4 py-3"><b className="block text-zinc-100">{user.nome}</b><small className="text-zinc-600">{user.id.slice(0, 8)}</small></td><td className="px-4 py-3"><span className="block text-zinc-300">{user.email}</span><small className="text-zinc-600">{user.telefone || 'Sem telefone'}</small></td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${user.tipo === 'admin' ? 'bg-violet-500/15 text-violet-300' : user.tipo === 'barbeiro' ? 'bg-blue-500/15 text-blue-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{roleLabels[user.tipo]}</span></td><td className="px-4 py-3 text-xs text-zinc-500">{new Date(user.created_at).toLocaleDateString('pt-BR')}</td></tr>)}</tbody></table></div> : <EmptyState>Nenhum usuário encontrado com esses filtros.</EmptyState>}
+            {users.length ? <div className="overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Contato</th><th className="px-4 py-3">Perfil e acesso</th><th className="px-4 py-3">Cadastro</th></tr></thead><tbody className="divide-y divide-zinc-800">{users.map((user) => <tr key={user.id} className="bg-zinc-950/30"><td className="px-4 py-3"><b className="block text-zinc-100">{user.nome}</b><small className="text-zinc-600">{user.id.slice(0, 8)}</small></td><td className="px-4 py-3"><span className="block text-zinc-300">{user.email}</span><small className="text-zinc-600">{user.telefone || 'Sem telefone'}</small></td><td className="px-4 py-3"><select aria-label={`Perfil de ${user.nome}`} value={user.tipo} disabled={changingUserId === user.id} onChange={(event) => { void changeUserRole(user, event.target.value as AccountType); }} className={`rounded-lg border px-2.5 py-2 text-xs font-bold outline-none disabled:opacity-50 ${user.tipo === 'admin' ? 'border-violet-500/25 bg-violet-500/10 text-violet-200' : user.tipo === 'proprietario' ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : user.tipo === 'barbeiro' ? 'border-blue-500/25 bg-blue-500/10 text-blue-200' : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'}`}><option value="admin">Administrador global</option><option value="proprietario">Proprietário</option><option value="barbeiro">Profissional</option><option value="cliente">Cliente</option></select></td><td className="px-4 py-3 text-xs text-zinc-500">{new Date(user.created_at).toLocaleDateString('pt-BR')}</td></tr>)}</tbody></table></div> : <EmptyState>Nenhum usuário encontrado com esses filtros.</EmptyState>}
           </div>
         )}
 
@@ -253,6 +288,13 @@ export function AdminCommandCenter({
             <div className="mb-4"><h3 className="text-lg font-black text-white">Financeiro consolidado</h3><p className="mt-1 text-sm text-zinc-500">Receita realizada e sinais que ainda exigem conferência.</p></div>
             <div className="grid gap-3 sm:grid-cols-2"><MetricCard label="Receita consolidada" value={formatCurrency(Number(metrics.receita_mes))} helper="serviços concluídos neste mês" icon={WalletCards} /><MetricCard label="Sinais pendentes" value={formatCurrency(Number(metrics.sinais_pendentes))} helper="pagamentos pendentes ou informados" icon={AlertTriangle} tone="amber" /></div>
             <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Unidade</th><th className="px-4 py-3">Receita do mês</th><th className="px-4 py-3">Agendamentos</th><th className="px-4 py-3">Avaliação</th></tr></thead><tbody className="divide-y divide-zinc-800">{summary.unidades.map((unit) => <tr key={unit.id}><td className="px-4 py-3"><span className="flex items-center gap-2 font-bold text-zinc-200"><Store size={14} className="text-violet-300" /> {unit.nome}</span></td><td className="px-4 py-3 font-black text-emerald-300">{formatCurrency(Number(unit.receita_mes))}</td><td className="px-4 py-3 text-zinc-400">{unit.agendamentos}</td><td className="px-4 py-3 text-amber-300">{Number(unit.avaliacao_media).toFixed(1)}</td></tr>)}</tbody></table></div>
+          </div>
+        )}
+
+        {summary && section === 'plataforma' && (
+          <div>
+            <div className="mb-4"><h3 className="flex items-center gap-2 text-lg font-black text-white"><Settings2 size={19} className="text-violet-300" /> Configuração global</h3><p className="mt-1 text-sm text-zinc-500">Controle a identidade e os avisos gerais do site. A titularidade permanece definida como Sucegan Tech.</p></div>
+            <PlatformSettings />
           </div>
         )}
       </div>

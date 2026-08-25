@@ -5,6 +5,10 @@
 :root {
   --background: #09090b;
   --foreground: #f4f4f5;
+  --brand-primary: #10b981;
+  --brand-secondary: #f59e0b;
+  --brand-primary-soft: #10b98124;
+  --brand-secondary-soft: #f59e0b20;
   color-scheme: dark;
 }
 
@@ -18,10 +22,49 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100%;
   min-width: 320px;
   overflow-x: hidden;
+}
+
+@layer components {
+  .panel-card {
+    @apply rounded-3xl border border-zinc-800/90 bg-zinc-900/75 shadow-2xl shadow-black/20 backdrop-blur-sm;
+  }
+
+  .primary-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--brand-primary, #10b981);
+    box-shadow: 0 12px 32px var(--brand-primary-soft, #10b98124);
+  }
+
+  .primary-button:hover {
+    filter: brightness(1.08);
+  }
+
+  .secondary-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition;
+    color: var(--brand-primary, #10b981);
+    border-color: var(--brand-primary-soft, #10b98124);
+    background: var(--brand-primary-soft, #10b98124);
+  }
+
+  .secondary-button:hover {
+    filter: brightness(1.15);
+  }
+
+  .brand-icon {
+    @apply inline-flex shrink-0 items-center justify-center rounded-2xl border p-3;
+    color: var(--brand-primary, #10b981);
+    border-color: var(--brand-primary-soft, #10b98124);
+    background: var(--brand-primary-soft, #10b98124);
+  }
+
+  .brand-surface {
+    border-color: var(--brand-primary-soft, #10b98124);
+    background-image: radial-gradient(circle at 10% 0%, var(--brand-primary-soft, #10b98124), transparent 42%), radial-gradient(circle at 100% 100%, var(--brand-secondary-soft, #f59e0b20), transparent 38%);
+  }
 }
 
 button,
@@ -42,6 +85,20 @@ textarea {
 
 .app-screen {
   min-height: 100vh;
+}
+
+.app-shell {
+  background-color: #09090b;
+  background-image: radial-gradient(circle at 15% -10%, rgba(16, 185, 129, 0.08), transparent 32rem), radial-gradient(circle at 95% 5%, rgba(59, 130, 246, 0.07), transparent 28rem);
+}
+
+* {
+  scrollbar-color: #3f3f46 #18181b;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.28);
 }
 
 .login-background {

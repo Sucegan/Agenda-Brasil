@@ -61,14 +61,26 @@ export async function POST(request: Request) {
   if (!captcha.ok) return NextResponse.json({ error: 'Não foi possível validar a verificação de segurança.' }, { status: 400 });
 
   const [{ data: barber }, { data: service }] = await Promise.all([
-    admin.from('barbeiros').select('barbearia_id').eq('id', barberId).maybeSingle(),
+    admin.from('barbeiros').select('barbearia_id, ativo').eq('id', barberId).maybeSingle(),
     admin.from('servicos').select('id').eq('id', serviceId).eq('barbeiro_id', barberId).maybeSingle(),
   ]);
   const { data: business } = barber
-    ? await admin.from('barbearias').select('agendamento_publico').eq('id', barber.barbearia_id).maybeSingle()
+    ? await admin.from('barbearias').select('agendamento_publico, ativa').eq('id', barber.barbearia_id).maybeSingle()
     : { data: null };
-  if (!business?.agendamento_publico || !service) {
+  if (!business?.ativa || !business.agendamento_publico || !barber?.ativo || !service) {
     return NextResponse.json({ error: 'Esta opção de agendamento não está disponível.' }, { status: 409 });
+  }
+
+  if (action === 'book') {
+    const { data: availableSlots, error: slotsError } = await admin.rpc('buscar_horarios_disponiveis', {
+      p_barbeiro_id: barberId,
+      p_servico_id: serviceId,
+      p_data: date,
+    });
+    const stillAvailable = !slotsError && availableSlots?.some((slot) => slot.horario.slice(0, 5) === time);
+    if (!stillAvailable) {
+      return NextResponse.json({ error: 'Este período não está mais disponível. Atualize os horários e escolha outro.' }, { status: 409 });
+    }
   }
 
   const { data, error } = await admin.from('booking_intents').insert({

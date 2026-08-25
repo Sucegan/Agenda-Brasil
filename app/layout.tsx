@@ -3,6 +3,7 @@ import "./globals.css";
 import { WebModeCleanup } from "./web-mode-cleanup";
 import { WebVitals } from "@/components/web-vitals";
 import { NetworkStatus } from "@/components/network-status";
+import { PlatformNotice } from "@/components/platform-notice";
 import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
 
 export const metadata: Metadata = {
@@ -58,6 +59,7 @@ export default function RootLayout({
         <WebModeCleanup />
         <WebVitals />
         <NetworkStatus />
+        <PlatformNotice />
         {children}
       </body>
     </html>

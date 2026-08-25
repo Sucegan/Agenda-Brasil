@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { SiteRights } from '@/components/site-rights';
-import { useSyncExternalStore, useState } from 'react';
+import { useEffect, useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
 import { signupErrorMessage, validateSignupFields } from '@/lib/signup-validation';
+import type { PlatformPublicSettings } from '@/lib/database.types';
 
 const subscribeToNothing = () => () => undefined;
 const getSupabase = async () => (await import('@/lib/supabase')).supabase;
@@ -41,6 +42,15 @@ function LoginForm() {
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [confirmationNotice, setConfirmationNotice] = useState('');
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
+  const [platform, setPlatform] = useState<PlatformPublicSettings | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getSupabase().then((client) => client.rpc('obter_configuracao_publica')).then(({ data }) => {
+      if (active && data) setPlatform(data);
+    });
+    return () => { active = false; };
+  }, []);
 
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ''); 
@@ -179,14 +189,14 @@ function LoginForm() {
         <div className="mx-auto w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center mb-4 shadow-xl">
           <Scissors className="text-emerald-400" size={32} />
         </div>
-        <h1 className="text-2xl font-black text-white">{isConviteBarbeiro ? 'Convite Barbeiro' : 'Agenda Brasil'}</h1>
+        <h1 className="text-2xl font-black text-white">{isConviteBarbeiro ? 'Convite para profissional' : platform?.nome_site ?? 'Agenda Brasil'}</h1>
         {isConviteBarbeiro ? (
           <p className="text-emerald-400 text-xs font-bold mt-2 flex items-center justify-center gap-1">
             <Sparkles size={14}/> VOCÊ FOI CONVIDADO PARA A EQUIPE
           </p>
         ) : (
           <p className="text-zinc-400 mt-2 text-sm font-medium">
-            {isLogin ? 'Acesse sua conta para continuar' : 'Crie sua conta para agendar'}
+            {isLogin ? platform?.subtitulo ?? 'Acesse sua conta para continuar' : 'Crie sua conta para agendar'}
           </p>
         )}
       </div>
@@ -282,7 +292,7 @@ function LoginForm() {
 
       {!confirmationEmail && !isConviteBarbeiro && (
         <div className="mt-6 space-y-3 text-center">
-          <Link href="/agendar" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Agendar sem senha</Link>
+          <Link href="/estabelecimentos" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Escolher estabelecimento e agendar</Link>
           <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); setConfirmationNotice(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>

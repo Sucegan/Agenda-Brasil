@@ -1,9 +1,14 @@
-export type AccountType = "cliente" | "barbeiro" | "admin";
+export type AccountType = "cliente" | "barbeiro" | "proprietario" | "admin";
 export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado" | "nao_compareceu";
 export type BusinessDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type PaymentStatus = "nao_exigido" | "pendente" | "informado" | "pago" | "dispensado";
 export type WaitlistStatus = "aguardando" | "notificado" | "convertido" | "cancelado";
 export type PublicBarber = Pick<Barber, "id" | "nome" | "horario_inicio" | "horario_fim" | "dias_trabalho">;
+export type AvailableSlot = { horario: string; horario_fim: string; duracao: number };
+export type PaymentMethod = "dinheiro" | "pix" | "debito" | "credito" | "online" | "outro";
+export type FinancialEntryType = "receita" | "despesa" | "estorno";
+export type FinancialEntryStatus = "pendente" | "pago" | "cancelado";
+export type BrandIcon = "tesoura" | "coroa" | "barba" | "estrela" | "calendario" | "loja";
 
 export type AdminMetrics = {
   unidades_total: number;
@@ -71,10 +76,46 @@ export interface Database {
   public: {
     Tables: {
       barbearias: {
-        Row: { id: string; proprietario_id: string; nome: string; slug: string; endereco: string | null; telefone: string | null; logo_url: string | null; agendamento_publico: boolean; cancelamento_horas: number; sinal_percentual: number; pix_chave: string | null; pix_beneficiario: string | null; lembrete_email: boolean; lembrete_whatsapp: boolean; lembrete_push: boolean; bloquear_apos_faltas: number; dias_bloqueio: number; responsavel_legal: string | null; documento_legal: string | null; email_privacidade: string | null; prazo_retencao_meses: number; ativa: boolean; created_at: string; updated_at: string };
-        Insert: { id?: string; proprietario_id: string; nome: string; slug: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; ativa?: boolean; created_at?: string; updated_at?: string };
-        Update: { nome?: string; slug?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; ativa?: boolean; updated_at?: string };
+        Row: { id: string; proprietario_id: string; nome: string; slug: string; endereco: string | null; telefone: string | null; logo_url: string | null; agendamento_publico: boolean; cancelamento_horas: number; sinal_percentual: number; pix_chave: string | null; pix_beneficiario: string | null; lembrete_email: boolean; lembrete_whatsapp: boolean; lembrete_push: boolean; bloquear_apos_faltas: number; dias_bloqueio: number; responsavel_legal: string | null; documento_legal: string | null; email_privacidade: string | null; prazo_retencao_meses: number; cor_primaria: string; cor_secundaria: string; icone: BrandIcon; antecedencia_minutos: number; intervalo_grade_minutos: number; horizonte_agendamento_dias: number; stripe_account_id: string | null; stripe_onboarding_status: "nao_conectado" | "pendente" | "ativo" | "restrito"; ativa: boolean; created_at: string; updated_at: string };
+        Insert: { id?: string; proprietario_id: string; nome: string; slug: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; cor_primaria?: string; cor_secundaria?: string; icone?: BrandIcon; antecedencia_minutos?: number; intervalo_grade_minutos?: number; horizonte_agendamento_dias?: number; stripe_account_id?: string | null; stripe_onboarding_status?: "nao_conectado" | "pendente" | "ativo" | "restrito"; ativa?: boolean; created_at?: string; updated_at?: string };
+        Update: { nome?: string; slug?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; cor_primaria?: string; cor_secundaria?: string; icone?: BrandIcon; antecedencia_minutos?: number; intervalo_grade_minutos?: number; horizonte_agendamento_dias?: number; stripe_account_id?: string | null; stripe_onboarding_status?: "nao_conectado" | "pendente" | "ativo" | "restrito"; ativa?: boolean; updated_at?: string };
         Relationships: [Relationship];
+      };
+      configuracoes_plataforma: {
+        Row: { id: true; nome_site: string; subtitulo: string; nome_direitos: string; email_suporte: string | null; aviso_global: string | null; modo_manutencao: boolean; taxa_plataforma_percentual: number; updated_at: string; updated_by: string | null };
+        Insert: { id?: true; nome_site?: string; subtitulo?: string; nome_direitos?: string; email_suporte?: string | null; aviso_global?: string | null; modo_manutencao?: boolean; taxa_plataforma_percentual?: number; updated_at?: string; updated_by?: string | null };
+        Update: { nome_site?: string; subtitulo?: string; nome_direitos?: string; email_suporte?: string | null; aviso_global?: string | null; modo_manutencao?: boolean; taxa_plataforma_percentual?: number; updated_at?: string; updated_by?: string | null };
+        Relationships: [Relationship];
+      };
+      terminais_pagamento: {
+        Row: { id: number; barbearia_id: string; apelido: string; provedor: string; identificador: string | null; aceita_debito: boolean; aceita_credito: boolean; aceita_aproximacao: boolean; ativa: boolean; created_at: string; updated_at: string };
+        Insert: { id?: never; barbearia_id: string; apelido: string; provedor: string; identificador?: string | null; aceita_debito?: boolean; aceita_credito?: boolean; aceita_aproximacao?: boolean; ativa?: boolean; created_at?: string; updated_at?: string };
+        Update: { apelido?: string; provedor?: string; identificador?: string | null; aceita_debito?: boolean; aceita_credito?: boolean; aceita_aproximacao?: boolean; ativa?: boolean; updated_at?: string };
+        Relationships: [Relationship];
+      };
+      planos_mensais: {
+        Row: { id: number; barbearia_id: string; nome: string; descricao: string | null; preco: number; atendimentos_inclusos: number; desconto_excedente: number; ativo: boolean; created_at: string; updated_at: string };
+        Insert: { id?: never; barbearia_id: string; nome: string; descricao?: string | null; preco: number; atendimentos_inclusos?: number; desconto_excedente?: number; ativo?: boolean; created_at?: string; updated_at?: string };
+        Update: { nome?: string; descricao?: string | null; preco?: number; atendimentos_inclusos?: number; desconto_excedente?: number; ativo?: boolean; updated_at?: string };
+        Relationships: [Relationship];
+      };
+      assinaturas_clientes: {
+        Row: { id: number; plano_id: number; cliente_id: number; status: "pendente" | "ativa" | "pausada" | "inadimplente" | "cancelada"; inicio_em: string; proxima_cobranca_em: string | null; atendimentos_usados: number; referencia_externa: string | null; created_at: string; updated_at: string };
+        Insert: { id?: never; plano_id: number; cliente_id: number; status?: "pendente" | "ativa" | "pausada" | "inadimplente" | "cancelada"; inicio_em?: string; proxima_cobranca_em?: string | null; atendimentos_usados?: number; referencia_externa?: string | null; created_at?: string; updated_at?: string };
+        Update: { status?: "pendente" | "ativa" | "pausada" | "inadimplente" | "cancelada"; proxima_cobranca_em?: string | null; atendimentos_usados?: number; referencia_externa?: string | null; updated_at?: string };
+        Relationships: [Relationship, Relationship];
+      };
+      movimentacoes_financeiras: {
+        Row: { id: number; barbearia_id: string; agendamento_id: number | null; tipo: FinancialEntryType; categoria: string; metodo: PaymentMethod; status: FinancialEntryStatus; valor_bruto: number; taxa: number; valor_liquido: number; descricao: string | null; referencia_externa: string | null; ocorrido_em: string; criado_por: string; created_at: string };
+        Insert: { id?: never; barbearia_id: string; agendamento_id?: number | null; tipo: FinancialEntryType; categoria: string; metodo: PaymentMethod; status?: FinancialEntryStatus; valor_bruto: number; taxa?: number; descricao?: string | null; referencia_externa?: string | null; ocorrido_em?: string; criado_por: string; created_at?: string };
+        Update: { categoria?: string; metodo?: PaymentMethod; status?: FinancialEntryStatus; valor_bruto?: number; taxa?: number; descricao?: string | null; referencia_externa?: string | null; ocorrido_em?: string };
+        Relationships: [Relationship, Relationship, Relationship];
+      };
+      checkouts_pagamento: {
+        Row: { id: string; barbearia_id: string; usuario_id: string; agendamento_id: number | null; plano_id: number | null; tipo: "sinal" | "servico" | "assinatura"; valor: number; moeda: string; status: "criado" | "pago" | "expirado" | "cancelado" | "falhou"; stripe_session_id: string; stripe_payment_intent_id: string | null; stripe_subscription_id: string | null; stripe_customer_id: string | null; livemode: boolean; expires_at: string | null; pago_em: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; barbearia_id: string; usuario_id: string; agendamento_id?: number | null; plano_id?: number | null; tipo: "sinal" | "servico" | "assinatura"; valor: number; moeda?: string; status?: "criado" | "pago" | "expirado" | "cancelado" | "falhou"; stripe_session_id: string; stripe_payment_intent_id?: string | null; stripe_subscription_id?: string | null; stripe_customer_id?: string | null; livemode?: boolean; expires_at?: string | null; pago_em?: string | null; created_at?: string; updated_at?: string };
+        Update: { status?: "criado" | "pago" | "expirado" | "cancelado" | "falhou"; stripe_payment_intent_id?: string | null; stripe_subscription_id?: string | null; stripe_customer_id?: string | null; expires_at?: string | null; pago_em?: string | null; updated_at?: string };
+        Relationships: [Relationship, Relationship, Relationship, Relationship];
       };
       usuarios: {
         Row: { id: string; nome: string; telefone: string | null; tipo: AccountType; created_at: string; termos_aceitos_em: string | null; marketing_opt_in: boolean; lembretes_email: boolean; lembretes_whatsapp: boolean; lembretes_push: boolean };
@@ -101,9 +142,9 @@ export interface Database {
         Relationships: [Relationship];
       };
       barbeiros: {
-        Row: { id: number; barbearia_id: string; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[] };
-        Insert: { id?: never; barbearia_id: string; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
-        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
+        Row: { id: number; barbearia_id: string; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[]; ativo: boolean };
+        Insert: { id?: never; barbearia_id: string; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean };
+        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean };
         Relationships: [Relationship];
       };
       clientes: {
@@ -144,12 +185,13 @@ export interface Database {
           origem: "painel" | "link_publico";
           sinal_valor: number;
           sinal_status: PaymentStatus;
+          pagamento_online_status: "nao_iniciado" | "processando" | "pago" | "estornado";
           cancelamento_tardio: boolean;
           public_token: string;
           pontos_creditados: boolean;
         };
         Insert: never;
-        Update: never;
+        Update: { status?: AppointmentStatus; cancelado_at?: string | null; sinal_status?: PaymentStatus; pagamento_online_status?: "nao_iniciado" | "processando" | "pago" | "estornado"; pontos_creditados?: boolean };
         Relationships: [Relationship, Relationship, Relationship];
       };
       fila_espera: {
@@ -219,7 +261,7 @@ export interface Database {
       };
       buscar_horarios_disponiveis: {
         Args: { p_barbeiro_id: number; p_servico_id: number; p_data: string };
-        Returns: { horario: string }[];
+        Returns: AvailableSlot[];
       };
       atualizar_status_agendamento: {
         Args: { p_agendamento_id: number; p_status: AppointmentStatus };
@@ -289,6 +331,17 @@ export interface Database {
         Args: { p_barbearia_id: string; p_ativa: boolean };
         Returns: Database["public"]["Tables"]["barbearias"]["Row"];
       };
+      obter_configuracao_publica: { Args: Record<string, never>; Returns: PlatformPublicSettings };
+      listar_estabelecimentos_publicos: { Args: Record<string, never>; Returns: PublicEstablishment[] };
+      listar_planos_publicos: { Args: { p_slug: string }; Returns: PublicMonthlyPlan[] };
+      admin_atualizar_tipo_usuario: { Args: { p_usuario_id: string; p_tipo: AccountType }; Returns: Database["public"]["Tables"]["usuarios"]["Row"] };
+      admin_atribuir_proprietario_barbearia: { Args: { p_barbearia_id: string; p_proprietario_id: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      registrar_movimentacao_financeira: {
+        Args: { p_barbearia_id: string; p_agendamento_id: number | null; p_tipo: FinancialEntryType; p_categoria: string; p_metodo: PaymentMethod; p_valor_bruto: number; p_taxa: number; p_status: FinancialEntryStatus; p_descricao: string | null };
+        Returns: Database["public"]["Tables"]["movimentacoes_financeiras"]["Row"];
+      };
+      obter_resumo_financeiro: { Args: { p_barbearia_id: string; p_inicio: string; p_fim: string }; Returns: FinancialSummary };
+      alterar_status_profissional: { Args: { p_barbeiro_id: number; p_ativo: boolean }; Returns: Database["public"]["Tables"]["barbeiros"]["Row"] };
       atualizar_preferencias_comunicacao: {
         Args: { p_email: boolean; p_whatsapp: boolean; p_push: boolean; p_marketing: boolean };
         Returns: Database["public"]["Tables"]["usuarios"]["Row"];
@@ -335,9 +388,18 @@ export type ScheduleBlock = Database["public"]["Tables"]["bloqueios_agenda"]["Ro
 export type WaitlistEntry = Database["public"]["Tables"]["fila_espera"]["Row"];
 export type Notification = Database["public"]["Tables"]["notificacoes"]["Row"];
 export type PushSubscriptionRow = Database["public"]["Tables"]["push_subscriptions"]["Row"];
+export type PaymentTerminal = Database["public"]["Tables"]["terminais_pagamento"]["Row"];
+export type MonthlyPlan = Database["public"]["Tables"]["planos_mensais"]["Row"];
+export type ClientSubscription = Database["public"]["Tables"]["assinaturas_clientes"]["Row"];
+export type FinancialEntry = Database["public"]["Tables"]["movimentacoes_financeiras"]["Row"];
+export type PaymentCheckout = Database["public"]["Tables"]["checkouts_pagamento"]["Row"];
 
-export type PublicBusiness = Pick<Barbershop, "id" | "nome" | "endereco" | "telefone" | "logo_url" | "slug" | "agendamento_publico" | "cancelamento_horas" | "sinal_percentual" | "pix_chave" | "pix_beneficiario">;
+export type PublicBusiness = Pick<Barbershop, "id" | "nome" | "endereco" | "telefone" | "logo_url" | "slug" | "agendamento_publico" | "cancelamento_horas" | "sinal_percentual" | "pix_chave" | "pix_beneficiario" | "cor_primaria" | "cor_secundaria" | "icone" | "antecedencia_minutos" | "intervalo_grade_minutos" | "horizonte_agendamento_dias">;
 export type PublicHoliday = Pick<BusinessHoliday, "data" | "descricao">;
 export type PublicCatalog = { negocio: PublicBusiness | null; barbeiros: PublicBarber[]; servicos: Service[]; feriados: PublicHoliday[] };
 export type ProfessionalWaitlistEntry = { id: number; data: string; periodo: string; status: string; cliente_nome: string; cliente_telefone: string; servico_nome: string; created_at: string };
 export type PublicLegalInformation = Pick<BusinessSettings, "nome" | "responsavel_legal" | "documento_legal" | "email_privacidade" | "telefone" | "endereco" | "prazo_retencao_meses">;
+export type PlatformPublicSettings = { nome_site: string; subtitulo: string; nome_direitos: string; email_suporte: string | null; aviso_global: string | null; modo_manutencao: boolean };
+export type PublicEstablishment = Pick<Barbershop, "id" | "nome" | "slug" | "endereco" | "telefone" | "logo_url" | "cor_primaria" | "cor_secundaria" | "icone"> & { profissionais: number; avaliacao_media: number };
+export type PublicMonthlyPlan = Pick<MonthlyPlan, "id" | "nome" | "descricao" | "preco" | "atendimentos_inclusos" | "desconto_excedente">;
+export type FinancialSummary = { receitas: number; despesas: number; estornos: number; taxas: number; saldo: number; pendentes: number; movimentacoes: number };

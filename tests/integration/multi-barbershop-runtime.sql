@@ -73,6 +73,18 @@ begin
       if sqlerrm like 'Apenas administradores%' then v_denied := true; else raise; end if;
     end;
     if not v_denied then raise exception 'Barbeiro comum conseguiu criar barbearia'; end if;
+
+    perform set_config('request.jwt.claim.sub', v_admin::text, true);
+    perform public.admin_atribuir_proprietario_barbearia(v_created.id, v_employee);
+    perform set_config('request.jwt.claim.sub', v_employee::text, true);
+    if public.eh_admin_global() then raise exception 'Proprietário recebeu acesso administrativo global'; end if;
+    if not public.eh_proprietario_barbearia(v_created.id) then raise exception 'Proprietário não recebeu acesso à unidade atribuída'; end if;
+    if not exists (select 1 from public.listar_minhas_barbearias() x where x.id = v_created.id) then
+      raise exception 'Unidade atribuída não apareceu no painel do proprietário';
+    end if;
+    if exists (select 1 from public.listar_minhas_barbearias() x where x.proprietario_id <> v_employee) then
+      raise exception 'Proprietário recebeu unidade de outro responsável';
+    end if;
   end if;
 
   perform set_config('request.jwt.claim.sub', v_admin::text, true);

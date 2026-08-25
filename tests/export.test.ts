@@ -22,6 +22,7 @@ const appointment: Appointment = {
   origem: 'painel',
   sinal_valor: 10,
   sinal_status: 'pago',
+  pagamento_online_status: 'nao_iniciado',
   cancelamento_tardio: false,
   public_token: '00000000-0000-0000-0000-000000000000',
   pontos_creditados: true,

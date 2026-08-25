@@ -17,6 +17,9 @@ async function main() {
   assert.ok(businesses?.length, 'At least one public barbershop must be available.');
 
   const selectedBusiness = businesses[0];
+  const { data: discovery, error: discoveryError } = await anonymous.rpc('listar_estabelecimentos_publicos');
+  assert.equal(discoveryError, null, `Public establishment discovery failed: ${discoveryError?.message}`);
+  assert.ok(discovery?.some((item) => item.id === selectedBusiness.id), 'Public establishment discovery must include the selected business.');
   const { data: catalog, error: catalogError } = await anonymous.rpc('obter_catalogo_publico', { p_slug: selectedBusiness.slug });
   assert.equal(catalogError, null, `Public catalog failed: ${catalogError?.message}`);
   assert.ok(catalog?.negocio, 'Public catalog must include business settings.');
@@ -64,6 +67,15 @@ async function main() {
   const { error: intentReadError } = await anonymous.from('booking_intents').select('token').limit(1);
   assert.ok(intentReadError, 'Anonymous users must not read temporary booking identity data.');
 
+  const { error: financeReadError } = await anonymous.from('movimentacoes_financeiras').select('id').limit(1);
+  assert.ok(financeReadError, 'Anonymous users must not read financial records.');
+
+  const { error: checkoutReadError } = await anonymous.from('checkouts_pagamento').select('id').limit(1);
+  assert.ok(checkoutReadError, 'Anonymous users must not read payment checkout records.');
+
+  const { error: roleMutationError } = await anonymous.rpc('admin_atualizar_tipo_usuario', { p_usuario_id: '00000000-0000-0000-0000-000000000000', p_tipo: 'admin' });
+  assert.ok(roleMutationError, 'Anonymous users must not manage platform roles.');
+
   const { error: rateLimitError } = await anonymous.rpc('consume_api_rate_limit', {
     p_key_hash: '0'.repeat(64),
     p_max_requests: 1,
@@ -71,7 +83,7 @@ async function main() {
   });
   assert.ok(rateLimitError, 'Anonymous users must not manipulate server rate limits.');
 
-  console.log('Integration security checks passed: public RPC data allowed; profile, admin, booking, intent, rate-limit and telemetry access denied.');
+  console.log('Integration security checks passed: public discovery allowed; profiles, admin, booking, checkout, finance, rate-limit and telemetry denied.');
 }
 
 void main();

@@ -24,12 +24,15 @@ export async function POST(request: Request) {
       admin.from('clientes').select('usuario_id').eq('id', appointment.cliente_id).maybeSingle(),
       admin.from('barbeiros').select('usuario_id,barbearia_id').eq('id', appointment.barbeiro_id).maybeSingle(),
     ]);
-    let isGlobalAdmin = false;
+    let canManageBusiness = false;
     if (client && barber && client.usuario_id !== user.id && barber.usuario_id !== user.id) {
-      const { data: profile } = await admin.from('usuarios').select('tipo').eq('id', user.id).maybeSingle();
-      isGlobalAdmin = profile?.tipo === 'admin';
+      const [{ data: profile }, { data: business }] = await Promise.all([
+        admin.from('usuarios').select('tipo').eq('id', user.id).maybeSingle(),
+        admin.from('barbearias').select('proprietario_id').eq('id', barber.barbearia_id).maybeSingle(),
+      ]);
+      canManageBusiness = profile?.tipo === 'admin' || (profile?.tipo === 'proprietario' && business?.proprietario_id === user.id);
     }
-    if (!client || (client.usuario_id !== user.id && barber?.usuario_id !== user.id && !isGlobalAdmin)) {
+    if (!client || (client.usuario_id !== user.id && barber?.usuario_id !== user.id && !canManageBusiness)) {
       return NextResponse.json({ error: 'Sem permissão para este agendamento.' }, { status: 403 });
     }
     targetUserId = client.usuario_id;

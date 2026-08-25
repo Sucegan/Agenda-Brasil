@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(58);
 
 select has_table('public', 'fila_espera', 'fila de espera existe');
 select has_table('public', 'notificacoes', 'fila de notificações existe');
@@ -11,6 +11,13 @@ select has_table('public', 'booking_intents', 'intenções temporárias existem'
 select has_table('public', 'api_rate_limits', 'limites de API existem');
 select has_table('public', 'avaliacoes', 'avaliações existem');
 select has_table('public', 'admin_audit_logs', 'auditoria administrativa existe');
+select has_table('public', 'configuracoes_plataforma', 'configurações globais existem');
+select has_table('public', 'terminais_pagamento', 'cadastro de maquininhas existe');
+select has_table('public', 'planos_mensais', 'planos mensais existem');
+select has_table('public', 'assinaturas_clientes', 'assinaturas de clientes existem');
+select has_table('public', 'movimentacoes_financeiras', 'movimentações financeiras existem');
+select has_table('public', 'checkouts_pagamento', 'checkouts online existem');
+select has_column('public', 'agendamentos', 'pagamento_online_status', 'agendamento registra pagamento online');
 
 select ok((select relrowsecurity from pg_class where oid = 'public.fila_espera'::regclass), 'RLS ativo na fila de espera');
 select ok((select relrowsecurity from pg_class where oid = 'public.notificacoes'::regclass), 'RLS ativo nas notificações');
@@ -20,12 +27,27 @@ select ok((select relrowsecurity from pg_class where oid = 'public.booking_inten
 select ok((select relrowsecurity from pg_class where oid = 'public.api_rate_limits'::regclass), 'RLS ativo nos limites de API');
 select ok((select relrowsecurity from pg_class where oid = 'public.avaliacoes'::regclass), 'RLS ativo nas avaliações');
 select ok((select relrowsecurity from pg_class where oid = 'public.admin_audit_logs'::regclass), 'RLS ativo na auditoria administrativa');
+select ok((select relrowsecurity from pg_class where oid = 'public.configuracoes_plataforma'::regclass), 'RLS ativo nas configurações globais');
+select ok((select relrowsecurity from pg_class where oid = 'public.terminais_pagamento'::regclass), 'RLS ativo nas maquininhas');
+select ok((select relrowsecurity from pg_class where oid = 'public.planos_mensais'::regclass), 'RLS ativo nos planos');
+select ok((select relrowsecurity from pg_class where oid = 'public.assinaturas_clientes'::regclass), 'RLS ativo nas assinaturas');
+select ok((select relrowsecurity from pg_class where oid = 'public.movimentacoes_financeiras'::regclass), 'RLS ativo no financeiro');
+select ok((select relrowsecurity from pg_class where oid = 'public.checkouts_pagamento'::regclass), 'RLS ativo nos checkouts');
 
 select has_function('public', 'eh_admin_global', array[]::text[], 'verificação administrativa global existe');
 select has_function('public', 'obter_resumo_admin', array[]::text[], 'resumo administrativo existe');
 select has_function('public', 'listar_usuarios_admin', array['text', 'text', 'integer'], 'diretório administrativo existe');
+select has_function('public', 'obter_configuracao_publica', array[]::text[], 'configuração pública segura existe');
+select has_function('public', 'listar_estabelecimentos_publicos', array[]::text[], 'descoberta pública de estabelecimentos existe');
+select has_function('public', 'admin_atualizar_tipo_usuario', array['uuid', 'text'], 'gestão administrativa de perfis existe');
+select has_function('public', 'registrar_movimentacao_financeira', array['uuid', 'bigint', 'text', 'text', 'text', 'numeric', 'numeric', 'text', 'text'], 'registro financeiro protegido existe');
+select has_function('public', 'obter_resumo_financeiro', array['uuid', 'date', 'date'], 'resumo financeiro protegido existe');
 
-select ok(has_function_privilege('anon', 'public.obter_catalogo_publico()', 'execute'), 'anon pode consultar catálogo seguro');
+select hasnt_function('public', 'obter_catalogo_publico', array[]::text[], 'sobrecarga global legada do catálogo foi removida');
+select ok(has_function_privilege('anon', 'public.obter_catalogo_publico(text)', 'execute'), 'anon consulta apenas catálogo identificado por estabelecimento');
+select ok(has_function_privilege('anon', 'public.listar_estabelecimentos_publicos()', 'execute'), 'anon pode escolher um estabelecimento público');
+select ok(has_function_privilege('anon', 'public.obter_configuracao_publica()', 'execute'), 'anon pode ler somente a configuração pública');
+select ok(has_function_privilege('anon', 'public.listar_planos_publicos(text)', 'execute'), 'anon pode consultar planos mensais ativos');
 select ok(has_function_privilege('anon', 'public.buscar_horarios_disponiveis(bigint,bigint,date)', 'execute'), 'anon pode consultar disponibilidade');
 select ok(not has_function_privilege('anon', 'public.criar_agendamento_com_origem(bigint,bigint,date,time,text)', 'execute'), 'anon não cria agendamento sem autenticação');
 select ok(not has_function_privilege('anon', 'public.atualizar_configuracoes_avancadas(text,boolean,smallint,numeric,text,text,boolean,boolean,boolean,smallint,smallint)', 'execute'), 'anon não altera regras do negócio');
@@ -34,8 +56,14 @@ select ok(not has_function_privilege('anon', 'public.consume_api_rate_limit(text
 select ok(not has_function_privilege('anon', 'public.claim_due_notifications(integer,uuid,integer)', 'execute'), 'anon não reivindica a fila de mensagens');
 select ok(not has_function_privilege('anon', 'public.cleanup_operational_data()', 'execute'), 'anon não executa limpeza operacional');
 select ok(not has_function_privilege('anon', 'public.atualizar_informacoes_legais(text,text,text,smallint)', 'execute'), 'anon não altera informações legais');
-select ok(has_function_privilege('anon', 'public.obter_informacoes_legais_publicas()', 'execute'), 'anon consulta identificação legal pública');
-select ok(has_function_privilege('authenticated', 'public.atualizar_informacoes_legais(text,text,text,smallint)', 'execute'), 'usuário autenticado pode solicitar atualização legal validada pela função');
+select ok(has_function_privilege('anon', 'public.obter_informacoes_legais_barbearia(text)', 'execute'), 'anon consulta identificação legal da unidade pública');
+select ok(not has_function_privilege('authenticated', 'public.atualizar_informacoes_legais(text,text,text,smallint)', 'execute'), 'atualização legal global legada permanece bloqueada');
+select ok(not has_table_privilege('anon', 'public.terminais_pagamento', 'select'), 'anon não lê dados de maquininhas');
+select ok(not has_table_privilege('anon', 'public.assinaturas_clientes', 'select'), 'anon não lê assinaturas de clientes');
+select ok(not has_table_privilege('anon', 'public.movimentacoes_financeiras', 'select'), 'anon não lê o caixa');
+select ok(not has_table_privilege('anon', 'public.checkouts_pagamento', 'select'), 'anon não lê checkouts de pagamento');
+select ok(not has_function_privilege('anon', 'public.admin_atualizar_tipo_usuario(uuid,text)', 'execute'), 'anon não altera perfis');
+select ok(not has_function_privilege('anon', 'public.registrar_movimentacao_financeira(uuid,bigint,text,text,text,numeric,numeric,text,text)', 'execute'), 'anon não registra movimentações');
 
 select * from finish();
 rollback;

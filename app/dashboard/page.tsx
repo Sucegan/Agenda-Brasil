@@ -11,12 +11,14 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { BusinessGrowthSettings } from '@/components/business-growth-settings';
+import { BusinessBrandIcon, businessBrandStyle } from '@/components/business-brand';
 import { CommunicationPreferences } from '@/components/communication-preferences';
 import { ReportTools } from '@/components/report-tools';
 import { NotificationHealth } from '@/components/notification-health';
 import { NotificationInbox } from '@/components/notification-inbox';
 import { ReviewLoyalty } from '@/components/review-loyalty';
 import { SiteRights } from '@/components/site-rights';
+import { OnlinePaymentButton } from '@/components/online-payment-button';
 import { ClientWaitlist, JoinWaitlistButton, ProfessionalWaitlist } from '@/components/waitlist-sections';
 import {
   appointmentStatusLabels, brazilDateISO, displayTime, formatCurrency,
@@ -25,7 +27,7 @@ import {
 } from '@/lib/scheduling';
 import type {
   Appointment, AppointmentStatus, Barber, Barbershop, BusinessDay, BusinessHoliday,
-  PaymentStatus, PublicBarber, ScheduleBlock, Service, UserProfile,
+  AvailableSlot, PaymentStatus, PublicBarber, ScheduleBlock, Service, UserProfile,
 } from '@/lib/database.types';
 import { requestNotificationDelivery } from '@/lib/notification-client';
 
@@ -33,6 +35,10 @@ const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'c
 const AdminCommandCenter = dynamic(
   () => import('@/components/admin-command-center').then((module) => module.AdminCommandCenter),
   { loading: () => <div className="h-52 animate-pulse rounded-3xl border border-violet-500/20 bg-zinc-900/70" /> },
+);
+const FinancialCenter = dynamic(
+  () => import('@/components/financial-center').then((module) => module.FinancialCenter),
+  { loading: () => <div className="h-72 animate-pulse rounded-3xl border border-emerald-500/20 bg-zinc-900/70" /> },
 );
 const paymentStatusLabels: Record<PaymentStatus, string> = {
   nao_exigido: 'não exigido',
@@ -43,6 +49,7 @@ const paymentStatusLabels: Record<PaymentStatus, string> = {
 };
 const DATA_LOAD_TIMEOUT_MS = 15_000;
 type PublicBarbershopSummary = Pick<Barbershop, 'id' | 'nome' | 'slug' | 'endereco' | 'telefone' | 'logo_url'>;
+type TeamBarber = PublicBarber & { ativo?: boolean };
 
 function withTimeout<T>(operation: Promise<T>, milliseconds: number, message: string) {
   let timeout: ReturnType<typeof setTimeout>;
@@ -145,7 +152,8 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel, onIn
               : <>Profissional: {item.barbeiro_nome} · {formatCurrency(Number(item.servico_preco ?? 0))}</>}
         </p>
         <p className="mt-1 text-xs font-medium text-zinc-500">{formatDate(item.data)} · {item.servico_duracao ?? 0} min</p>
-        {Number(item.sinal_valor) > 0 && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200"><b>Sinal: {formatCurrency(Number(item.sinal_valor))}</b> · {paymentStatusLabels[item.sinal_status]}{role === 'cliente' && pixKey && item.sinal_status === 'pendente' && <div className="mt-2 flex flex-wrap gap-2"><button onClick={async () => { const done = await copyText(pixKey); toast[done ? 'success' : 'error'](done ? `Chave Pix copiada${pixOwner ? ` — ${pixOwner}` : ''}.` : 'Não foi possível copiar a chave.'); }} className="rounded-lg border border-amber-500/30 px-2.5 py-1.5 font-bold">Copiar Pix</button>{onInformPayment && <button onClick={onInformPayment} className="rounded-lg bg-amber-500 px-2.5 py-1.5 font-bold text-zinc-950">Já paguei</button>}</div>}</div>}
+        {Number(item.sinal_valor) > 0 && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200"><b>Sinal: {formatCurrency(Number(item.sinal_valor))}</b> · {paymentStatusLabels[item.sinal_status]}{role === 'cliente' && ['pendente', 'informado'].includes(item.sinal_status) && <div className="mt-2 flex flex-wrap gap-2"><OnlinePaymentButton appointmentId={item.id} kind="sinal" label="Pagar sinal online" />{pixKey && item.sinal_status === 'pendente' && <><button onClick={async () => { const done = await copyText(pixKey); toast[done ? 'success' : 'error'](done ? `Chave Pix copiada${pixOwner ? ` — ${pixOwner}` : ''}.` : 'Não foi possível copiar a chave.'); }} className="rounded-lg border border-amber-500/30 px-2.5 py-1.5 font-bold">Copiar Pix manual</button>{onInformPayment && <button onClick={onInformPayment} className="rounded-lg bg-amber-500 px-2.5 py-1.5 font-bold text-zinc-950">Já paguei manualmente</button>}</>}</div>}</div>}
+        {item.pagamento_online_status === 'pago' && <p className="mt-2 text-xs font-bold text-emerald-300">Pagamento online confirmado</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {isProfessional && whatsapp && (
@@ -159,6 +167,7 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel, onIn
         {isProfessional && Number(item.sinal_valor) > 0 && onPaymentStatusChange && <select value={item.sinal_status} onChange={(event) => onPaymentStatusChange(event.target.value as Exclude<PaymentStatus, 'nao_exigido'>)} className="rounded-lg border border-amber-500/30 bg-zinc-900 px-2.5 py-2 text-xs font-bold text-amber-200"><option value="pendente">Sinal pendente</option><option value="informado">Cliente informou</option><option value="pago">Sinal confirmado</option><option value="dispensado">Sinal dispensado</option></select>}
         {role === 'cliente' && item.status === 'agendado' && !confirmationWindowOpen && <span className="text-xs font-medium text-zinc-500">Confirmação disponível 24h antes.</span>}
         {canConfirm && <button onClick={onConfirm} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-500">Confirmar horário</button>}
+        {role === 'cliente' && Number(item.sinal_valor) <= 0 && item.pagamento_online_status !== 'pago' && ['agendado', 'confirmado'].includes(item.status) && <OnlinePaymentButton appointmentId={item.id} kind="servico" label="Pagar serviço online" />}
         {canCancel && <button onClick={onCancel} className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20">Cancelar</button>}
       </div>
     </article>
@@ -176,7 +185,7 @@ export default function DashboardPage() {
   const [barbeiroGerenciadoId, setBarbeiroGerenciadoId] = useState<number | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [clientPoints, setClientPoints] = useState(0);
-  const [barbeiros, setBarbeiros] = useState<PublicBarber[]>([]);
+  const [barbeiros, setBarbeiros] = useState<TeamBarber[]>([]);
   const [servicos, setServicos] = useState<Service[]>([]);
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
   const [feriados, setFeriados] = useState<BusinessHoliday[]>([]);
@@ -191,7 +200,7 @@ export default function DashboardPage() {
   const [selectedServico, setSelectedServico] = useState<Service | null>(null);
   const [selectedData, setSelectedData] = useState('');
   const [selectedHorario, setSelectedHorario] = useState('');
-  const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
+  const [horariosDisponiveis, setHorariosDisponiveis] = useState<AvailableSlot[]>([]);
   const [step, setStep] = useState(1);
   const [diasProximos] = useState<DayChoice[]>(() => upcomingDays(30));
 
@@ -281,13 +290,28 @@ export default function DashboardPage() {
       supabase.from('feriados_negocio').select('*').eq('barbearia_id', selectedBusinessId).order('data'),
     ]);
     if (businessError || holidaysError || !business) throw businessError ?? holidaysError ?? new Error('Não foi possível carregar a barbearia selecionada.');
-    const isAdminProfile = perfil.tipo === 'admin';
-    const { data: teamData, error: teamError } = isAdminProfile
-      ? await supabase.from('barbeiros').select('*').eq('barbearia_id', selectedBusinessId).order('nome')
-      : await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).eq('barbearia_id', selectedBusinessId);
-    if (teamError || !teamData?.length) throw teamError ?? new Error('Nenhum profissional vinculado a esta barbearia.');
-    const profissional = isAdminProfile
-      ? teamData.find((item) => item.id === barbeiroGerenciadoId) ?? teamData[0]
+    const isManagerProfile = perfil.tipo === 'admin' || perfil.tipo === 'proprietario';
+    const { data: teamData, error: teamError } = isManagerProfile
+      ? await supabase.from('barbeiros').select('*').eq('barbearia_id', selectedBusinessId).order('ativo', { ascending: false }).order('nome')
+      : await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).eq('barbearia_id', selectedBusinessId).eq('ativo', true);
+    if (teamError) throw teamError;
+    setNegocio(business);
+    setFeriados(holidays ?? []);
+    setNomeNegocio(business.nome);
+    setEnderecoNegocio(business.endereco ?? '');
+    setTelefoneNegocio(business.telefone ?? '');
+    setLogoNegocio(business.logo_url ?? '');
+    if (!teamData?.length) {
+      setBarbeiro(null);
+      setBarbeiros([]);
+      setClienteId(null);
+      setServicos([]);
+      setAgendamentos([]);
+      setBloqueios([]);
+      return;
+    }
+    const profissional = isManagerProfile
+      ? teamData.find((item) => item.id === barbeiroGerenciadoId) ?? teamData.find((item) => item.ativo) ?? teamData[0]
       : teamData[0];
     if (barbeiroGerenciadoId !== profissional.id) setBarbeiroGerenciadoId(profissional.id);
     const teamBarberIds = teamData.map((item) => item.id);
@@ -297,7 +321,7 @@ export default function DashboardPage() {
     setEnderecoNegocio(business.endereco ?? '');
     setTelefoneNegocio(business.telefone ?? '');
     setLogoNegocio(business.logo_url ?? '');
-    const servicesQuery = isAdminProfile
+    const servicesQuery = isManagerProfile
       ? supabase.from('servicos').select('*').in('barbeiro_id', teamBarberIds).order('nome')
       : supabase.from('servicos').select('*').eq('barbeiro_id', profissional.id).order('nome');
     const [{ data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: bloqueiosData, error: bloqueiosError }] = await withTimeout(
@@ -343,7 +367,7 @@ export default function DashboardPage() {
   }, [recarregar]);
 
   useEffect(() => {
-    if (tipoUsuario === 'admin') {
+    if (tipoUsuario === 'admin' || tipoUsuario === 'proprietario') {
       if (!usuarioId || !barberIdsKey) return;
       const channel = supabase.channel(`agenda-admin-${usuarioId}-${barbeariaAtivaId ?? 'unidade'}`);
       for (const id of barberIdsKey.split(',')) {
@@ -422,7 +446,7 @@ export default function DashboardPage() {
     if (error) return toast.error(error.message);
     setSelectedData(data);
     setSelectedHorario('');
-    setHorariosDisponiveis((slots ?? []).map((slot) => displayTime(slot.horario)));
+    setHorariosDisponiveis(slots ?? []);
   };
 
   const agendar = async () => {
@@ -605,6 +629,19 @@ export default function DashboardPage() {
     else toast.error('Não foi possível copiar o convite.');
   };
 
+  const alterarStatusProfissional = async (profissional: TeamBarber) => {
+    const novoStatus = !profissional.ativo;
+    if (!window.confirm(`${novoStatus ? 'Reativar' : 'Desativar'} o acesso operacional de “${profissional.nome}” nesta unidade?`)) return;
+    const { error } = await supabase.rpc('alterar_status_profissional', {
+      p_barbeiro_id: profissional.id,
+      p_ativo: novoStatus,
+    });
+    if (error) return toast.error(error.message ?? 'Não foi possível alterar o profissional.');
+    setBarbeiroGerenciadoId(null);
+    await carregarDados();
+    toast.success(novoStatus ? 'Profissional reativado.' : 'Profissional desativado sem apagar o histórico.');
+  };
+
   const criarNovaBarbearia = async (event: React.FormEvent) => {
     event.preventDefault();
     if (salvandoNovaBarbearia) return;
@@ -662,18 +699,22 @@ export default function DashboardPage() {
   const historicoCliente = agendamentos.filter((item) => !proximosCliente.some((proximo) => proximo.id === item.id));
   const diasOrdenados: BusinessDay[] = [0, 1, 2, 3, 4, 5, 6];
   const isAdmin = usuario.tipo === 'admin';
-  const isProfessionalUser = usuario.tipo === 'admin' || usuario.tipo === 'barbeiro';
-  const isBusinessOwner = Boolean(isAdmin && negocio);
-  const professionalAppointmentRole = isAdmin ? 'admin' as const : 'barbeiro' as const;
+  const isOwner = usuario.tipo === 'proprietario';
+  const isManager = isAdmin || isOwner;
+  const isProfessionalUser = isManager || usuario.tipo === 'barbeiro';
+  const isBusinessOwner = Boolean(negocio && (isAdmin || (isOwner && negocio.proprietario_id === usuario.id)));
+  const professionalAppointmentRole = isManager ? 'admin' as const : 'barbeiro' as const;
+  const brandStyle = negocio ? businessBrandStyle(negocio.cor_primaria, negocio.cor_secundaria) : undefined;
 
   return (
-    <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100 selection:bg-emerald-500/30">
+    <main className="app-screen app-shell safe-page-bottom text-zinc-100" style={brandStyle}>
       <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
-      <header className="safe-header sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/95 px-4 pb-4 sm:px-6">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-xl font-black text-transparent sm:text-2xl">{negocio?.nome ?? 'Agenda Brasil'}</h1>
-            <p className="mt-0.5 truncate text-xs text-zinc-400">Olá, {usuario?.nome} <span className="ml-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-300">{usuario.tipo === 'admin' ? 'administrador' : usuario.tipo}</span></p>
+      <header className="safe-header sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/95 px-4 pb-4 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {negocio && <span className="brand-icon hidden sm:inline-flex"><BusinessBrandIcon icon={negocio.icone} size={20} /></span>}
+            <div className="min-w-0"><h1 className="truncate text-xl font-black sm:text-2xl" style={{ color: 'var(--brand-primary)' }}>{negocio?.nome ?? 'Agenda Brasil'}</h1>
+            <p className="mt-0.5 truncate text-xs text-zinc-400">Olá, {usuario?.nome} <span className="ml-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-300">{isAdmin ? 'administrador' : isOwner ? 'proprietário' : usuario.tipo}</span></p></div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={() => setPerfilAberto((open) => !open)} className="rounded-xl border border-zinc-800 bg-zinc-900 p-2.5 text-zinc-300 hover:border-emerald-500/50 hover:text-emerald-300" aria-label="Abrir perfil"><UserCog size={17} /></button>
@@ -682,16 +723,18 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <section className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
-        <section className={`rounded-2xl border p-4 shadow-xl ${isAdmin ? 'border-violet-500/25 bg-violet-500/10' : usuario.tipo === 'barbeiro' ? 'border-blue-500/25 bg-blue-500/10' : 'border-emerald-500/20 bg-emerald-500/10'}`}>
+      <section className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
+        <section className={`rounded-2xl border p-4 shadow-xl ${isAdmin ? 'border-violet-500/25 bg-violet-500/10' : isOwner ? 'border-amber-500/25 bg-amber-500/10' : usuario.tipo === 'barbeiro' ? 'border-blue-500/25 bg-blue-500/10' : 'border-emerald-500/20 bg-emerald-500/10'}`}>
           <div className="flex items-start gap-3">
-            <ShieldCheck className={isAdmin ? 'text-violet-300' : usuario.tipo === 'barbeiro' ? 'text-blue-300' : 'text-emerald-300'} size={22} />
+            <ShieldCheck className={isAdmin ? 'text-violet-300' : isOwner ? 'text-amber-300' : usuario.tipo === 'barbeiro' ? 'text-blue-300' : 'text-emerald-300'} size={22} />
             <div>
-              <h2 className="font-black text-white">{isAdmin ? 'Painel administrativo' : usuario.tipo === 'barbeiro' ? 'Painel do profissional' : 'Painel do cliente'}</h2>
+              <h2 className="font-black text-white">{isAdmin ? 'Painel administrativo global' : isOwner ? 'Painel do proprietário' : usuario.tipo === 'barbeiro' ? 'Painel do profissional' : 'Painel do cliente'}</h2>
               <p className="mt-1 text-xs leading-5 text-zinc-400">
                 {isAdmin
                   ? 'Acesso global a todas as unidades, usuários, equipe, clientes, agenda, pagamentos, avaliações, relatórios e configurações.'
-                  : usuario.tipo === 'barbeiro'
+                  : isOwner
+                    ? 'Administre somente seus estabelecimentos, profissionais, agenda, identidade visual, clientes e financeiro.'
+                    : usuario.tipo === 'barbeiro'
                     ? 'Acesso somente à sua agenda, clientes atendidos, serviços, horários e bloqueios nas unidades vinculadas.'
                     : 'Acesso somente aos seus agendamentos, pagamentos, fila de espera, avaliações e dados pessoais.'}
               </p>
@@ -720,7 +763,7 @@ export default function DashboardPage() {
             </label>
           </section>
         )}
-        {isProfessionalUser && (isAdmin || barbearias.length > 1) && (
+        {isProfessionalUser && (isManager || barbearias.length > 1) && (
           <section id="operacao-unidade" className="scroll-mt-24 rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Barbearia ativa
@@ -728,7 +771,7 @@ export default function DashboardPage() {
                   {barbearias.map((item) => <option key={item.id} value={item.id}>{item.nome}{item.ativa ? '' : ' (inativa)'}</option>)}
                 </select>
               </label>
-              {isAdmin && barbeiros.length > 0 && <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Profissional em gestão
+              {isManager && barbeiros.length > 0 && <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Profissional em gestão
                 <select value={barbeiroGerenciadoId ?? ''} onChange={(event) => setBarbeiroGerenciadoId(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-violet-500/30 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-violet-400">
                   {barbeiros.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
                 </select>
@@ -758,6 +801,15 @@ export default function DashboardPage() {
           </section>
         )}
 
+        {isBusinessOwner && negocio && !barbeiro && (
+          <div className="space-y-5">
+            <section className="panel-card border-amber-500/25 p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-black text-white">Monte a equipe desta unidade</h2><p className="mt-1 text-sm text-zinc-500">Nenhum profissional está vinculado. Envie um convite para liberar serviços e agenda.</p></div><button onClick={() => { void criarConvite(); }} className="primary-button"><Copy size={15} /> Copiar convite de profissional</button></div></section>
+            <section className="panel-card p-5"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Dados do estabelecimento</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-zinc-400">NOME<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3" /></label><label className="text-xs font-bold text-zinc-400">TELEFONE<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3" /></label><label className="text-xs font-bold text-zinc-400">ENDEREÇO<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3" /></label><label className="text-xs font-bold text-zinc-400">URL DA LOGO<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3" /></label><button className="primary-button sm:col-span-2">Salvar dados</button></form></section>
+            <BusinessGrowthSettings business={negocio} onUpdated={carregarDados} />
+            <FinancialCenter barbershopId={negocio.id} />
+          </div>
+        )}
+
         {usuario?.tipo === 'cliente' && (
           <div className="space-y-5">
             {negocio && <NotificationInbox userId={usuario.id} barbershopId={negocio.id} />}
@@ -765,7 +817,16 @@ export default function DashboardPage() {
               <div className="mb-5 flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={21} /> Novo agendamento</h2>{step > 1 && <button onClick={() => { setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); setSelectedData(''); setSelectedHorario(''); }} className="text-xs font-bold text-zinc-400 hover:text-white">Reiniciar</button>}</div>
               {step === 1 && <><p className="mb-3 text-sm text-zinc-400">Escolha o profissional.</p><div className="grid gap-3 sm:grid-cols-2">{barbeiros.map((profissional) => <button key={profissional.id} onClick={() => { setSelectedBarbeiro(profissional); setSelectedServico(null); setStep(2); }} className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 text-left hover:border-emerald-500/50"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/10 font-black text-emerald-300">{profissional.nome.charAt(0).toUpperCase()}</span><span><b className="block text-white">{profissional.nome}</b><small className="text-zinc-500">{formatWorkDays(profissional.dias_trabalho)}</small></span></button>)}{barbeiros.length === 0 && <p className="text-sm text-zinc-500">Nenhum profissional disponível ainda.</p>}</div></>}
               {step === 2 && <><p className="mb-3 text-sm text-zinc-400">Serviços de <b className="text-zinc-200">{selectedBarbeiro?.nome}</b></p><div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{servicos.filter((servico) => servico.barbeiro_id === selectedBarbeiro?.id).map((servico) => <button key={servico.id} onClick={() => { setSelectedServico(servico); setStep(3); }} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-left hover:bg-amber-500 hover:text-zinc-950"><b className="block">{servico.nome}</b><span className="mt-1 block text-xs">{formatCurrency(Number(servico.preco))} · {servico.duracao} min</span></button>)}</div></>}
-              {step === 3 && <><div className="mb-4 flex flex-wrap gap-2 text-xs"><span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5">{selectedBarbeiro?.nome}</span><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-amber-300">{selectedServico?.nome}</span></div><p className="mb-3 text-sm text-zinc-400">Escolha uma data disponível.</p><div className="flex gap-2 overflow-x-auto pb-3">{diasProximos.map((dia) => { const feriado = feriadosPorData.get(dia.iso); const indisponivel = !selectedBarbeiro?.dias_trabalho.includes(dia.businessDay) || Boolean(feriado); return <button key={dia.iso} disabled={indisponivel} title={feriado ?? undefined} onClick={() => { void calcularHorarios(dia.iso); }} className={`shrink-0 rounded-xl border px-3 py-2 text-center text-xs disabled:cursor-not-allowed disabled:opacity-35 ${selectedData === dia.iso ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-emerald-500/50'}`}><b className="block">{dia.day} {dia.month}</b><span>{dia.weekday}</span></button>; })}</div>{selectedData && <div className="mt-4">{horariosDisponiveis.length ? <><p className="mb-3 text-sm text-zinc-400">Escolha o horário.</p><div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{horariosDisponiveis.map((horario) => <button key={horario} onClick={() => setSelectedHorario(horario)} className={`rounded-lg border py-2 text-sm font-bold ${selectedHorario === horario ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300'}`}>{horario}</button>)}</div><button onClick={() => { void agendar(); }} disabled={!selectedHorario} className="mt-5 w-full rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:opacity-50">Agendar horário</button></> : <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200"><p>Não há horários livres nesta data.</p>{selectedBarbeiro && selectedServico && <JoinWaitlistButton barberId={selectedBarbeiro.id} serviceId={selectedServico.id} date={selectedData} />}</div>}</div>}</>}
+              {step === 3 && <>
+                <div className="mb-4 flex flex-wrap gap-2 text-xs"><span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5">{selectedBarbeiro?.nome}</span><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-amber-300">{selectedServico?.nome} · {selectedServico?.duracao} min</span></div>
+                <p className="mb-3 text-sm text-zinc-400">Escolha uma data disponível.</p>
+                <div className="flex gap-2 overflow-x-auto pb-3">{diasProximos.map((dia) => { const feriado = feriadosPorData.get(dia.iso); const indisponivel = !selectedBarbeiro?.dias_trabalho.includes(dia.businessDay) || Boolean(feriado); return <button key={dia.iso} disabled={indisponivel} title={feriado ?? undefined} onClick={() => { void calcularHorarios(dia.iso); }} className={`shrink-0 rounded-xl border px-3 py-2 text-center text-xs disabled:cursor-not-allowed disabled:opacity-35 ${selectedData === dia.iso ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-emerald-500/50'}`}><b className="block">{dia.day} {dia.month}</b><span>{dia.weekday}</span></button>; })}</div>
+                {selectedData && <div className="mt-4">{horariosDisponiveis.length ? <>
+                  <p className="mb-3 text-sm text-zinc-400">Cada opção reserva o período completo do serviço.</p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">{horariosDisponiveis.map((slot) => { const start = displayTime(slot.horario); const end = displayTime(slot.horario_fim); return <button key={slot.horario} onClick={() => setSelectedHorario(start)} aria-label={`Das ${start} às ${end}`} className={`rounded-xl border px-2 py-2.5 text-sm font-bold ${selectedHorario === start ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300'}`}><span className="block">{start}</span><small className="block text-[10px] font-medium opacity-70">até {end}</small></button>; })}</div>
+                  <button onClick={() => { void agendar(); }} disabled={!selectedHorario} className="primary-button mt-5 w-full">Agendar horário</button>
+                </> : <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200"><p>Não há um intervalo completo livre para este serviço.</p>{selectedBarbeiro && selectedServico && <JoinWaitlistButton barberId={selectedBarbeiro.id} serviceId={selectedServico.id} date={selectedData} />}</div>}</div>}
+              </>}
             </section>
             <ClientWaitlist barberIds={barbeiros.map((item) => item.id)} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Próximos horários</h2><div className="space-y-3">{proximosCliente.length ? proximosCliente.map((item) => <AppointmentItem key={item.id} item={item} role="cliente" pixKey={negocio?.pix_chave} pixOwner={negocio?.pix_beneficiario} onInformPayment={() => { void informarPagamento(item.id); }} onConfirm={() => { void confirmarAgendamento(item.id); }} onCancel={() => { void cancelarAgendamento(item.id); }} />) : <p className="text-sm text-zinc-500">Você não tem próximos horários.</p>}</div></section>
@@ -777,6 +838,7 @@ export default function DashboardPage() {
         {isProfessionalUser && barbeiro && (
           <div className="space-y-5">
             {isBusinessOwner && <section className="flex flex-col justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-300"><UserPlus size={22} /></span><span><b className="block">Convidar profissional</b><small className="text-zinc-500">Link único, válido por 7 dias.</small></span></div><button onClick={() => { void criarConvite(); }} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-500"><Copy size={15} /> Copiar convite</button></section>}
+            {isBusinessOwner && barbeiros.length > 0 && <section className="panel-card p-5"><div className="mb-4"><h2 className="flex items-center gap-2 text-lg font-black"><Users size={20} className="text-blue-300" /> Equipe do estabelecimento</h2><p className="mt-1 text-xs text-zinc-500">Desativar preserva todo o histórico e impede novos horários para o profissional.</p></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{barbeiros.map((member) => <article key={member.id} className={`rounded-2xl border p-4 ${member.ativo === false ? 'border-zinc-800 bg-zinc-950/45 opacity-65' : 'border-blue-500/20 bg-blue-500/5'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black">{member.nome}</p><p className="mt-1 text-xs text-zinc-500">{formatWorkDays(member.dias_trabalho)}</p></div><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${member.ativo === false ? 'bg-zinc-800 text-zinc-500' : 'bg-emerald-500/15 text-emerald-300'}`}>{member.ativo === false ? 'Inativo' : 'Ativo'}</span></div><div className="mt-4 flex gap-2"><button type="button" onClick={() => setBarbeiroGerenciadoId(member.id)} className="secondary-button flex-1">Gerenciar</button><button type="button" onClick={() => { void alterarStatusProfissional(member); }} className={`rounded-xl border px-3 py-2 text-xs font-bold ${member.ativo === false ? 'border-emerald-500/25 text-emerald-300' : 'border-red-500/25 text-red-300'}`}>{member.ativo === false ? 'Reativar' : 'Desativar'}</button></div></article>)}</div></section>}
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatCard label="Faturamento hoje" value={formatCurrency(faturamentoHoje)} icon={Wallet} /><StatCard label="Agenda de hoje" value={`${agendaHoje.length} horários`} icon={CalendarDays} color="blue" /><StatCard label="Previsão futura" value={formatCurrency(previsaoFutura)} icon={TrendingUp} color="amber" /><StatCard label="Faltas no mês" value={`${relatorioMes.faltas} clientes`} icon={CircleX} color="orange" /></section>
             <ProfessionalWaitlist barberId={barbeiro.id} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Agenda de hoje</h2><div className="space-y-3">{agendaHoje.length ? agendaHoje.map((item) => <AppointmentItem key={item.id} item={item} role={professionalAppointmentRole} onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Nenhum cliente agendado para hoje.</p>}</div></section>
@@ -790,9 +852,10 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Umbrella className="text-blue-400" size={20} /> Bloquear agenda</h2><form onSubmit={salvarBloqueio} className="space-y-3"><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">TIPO<select value={bloqueioTipo} onChange={(event) => setBloqueioTipo(event.target.value as typeof bloqueioTipo)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none"><option value="pausa">Pausa</option><option value="folga">Folga</option><option value="ferias">Férias</option></select></label><label className="text-xs font-bold text-zinc-400">MOTIVO<input value={bloqueioMotivo} onChange={(event) => setBloqueioMotivo(event.target.value)} placeholder="Ex.: Almoço" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div><div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">DATA INICIAL<input type="date" value={bloqueioInicio} onChange={(event) => setBloqueioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">DATA FINAL<input type="date" value={bloqueioFim} onChange={(event) => setBloqueioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>{bloqueioTipo === 'pausa' && <div className="grid grid-cols-2 gap-3"><label className="text-xs font-bold text-zinc-400">INÍCIO<input type="time" value={bloqueioHoraInicio} onChange={(event) => setBloqueioHoraInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="text-xs font-bold text-zinc-400">FIM<input type="time" value={bloqueioHoraFim} onChange={(event) => setBloqueioHoraFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label></div>}<button className="w-full rounded-xl bg-blue-600 py-3 font-bold hover:bg-blue-500">Bloquear período</button></form><div className="mt-4 space-y-2">{bloqueios.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span><b className="uppercase text-blue-300">{item.tipo}</b> · {formatDate(item.data_inicio)}{item.data_fim !== item.data_inicio && ` a ${formatDate(item.data_fim)}`} {item.hora_inicio && `· ${displayTime(item.hora_inicio)}-${displayTime(item.hora_fim ?? '')}`}<small className="ml-2 text-zinc-500">{item.motivo}</small></span><button onClick={() => { void removerBloqueio(item.id); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button></div>)}{!bloqueios.length && <p className="text-xs text-zinc-500">Nenhum bloqueio cadastrado.</p>}</div></div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarX2 className="text-orange-400" size={20} /> Feriados</h2>{isBusinessOwner && <form onSubmit={salvarFeriado} className="space-y-3"><label className="block text-xs font-bold text-zinc-400">DATA<input type="date" value={feriadoData} onChange={(event) => setFeriadoData(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="block text-xs font-bold text-zinc-400">DESCRIÇÃO<input value={feriadoDescricao} onChange={(event) => setFeriadoDescricao(event.target.value)} placeholder="Ex.: Natal" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><button className="w-full rounded-xl bg-orange-600 py-3 font-bold hover:bg-orange-500">Salvar feriado</button></form>}<div className="mt-4 space-y-2">{feriados.map((item) => <div key={item.data} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span>{formatDate(item.data)} <b className="ml-2 text-orange-200">{item.descricao}</b></span>{isBusinessOwner && <button onClick={() => { void removerFeriado(item.data); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button>}</div>)}{!feriados.length && <p className="text-xs text-zinc-500">Nenhum feriado cadastrado.</p>}</div></div>
             </section>
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-1 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2>{isAdmin && <p className="mb-4 text-xs text-violet-300">Gerenciando o catálogo de <b>{barbeiro.nome}</b>. Troque o profissional no seletor da unidade para editar outro catálogo.</p>}<form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> {isAdmin ? `Adicionar serviço para ${barbeiro.nome}` : 'Adicionar serviço para meu atendimento'}</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="block text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small>{isAdmin && <small className="block text-violet-300">Profissional: {barbeiros.find((member) => member.id === item.barbeiro_id)?.nome ?? 'Equipe'}</small>}</span><button type="button" onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20" aria-label={`Excluir serviço ${item.nome}`}><Trash2 size={16} /></button></div>)}</div></section>
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-1 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2>{isManager && <p className="mb-4 text-xs text-violet-300">Gerenciando o catálogo de <b>{barbeiro.nome}</b>. Troque o profissional no seletor da unidade para editar outro catálogo.</p>}<form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> {isManager ? `Adicionar serviço para ${barbeiro.nome}` : 'Adicionar serviço para meu atendimento'}</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="block text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small>{isManager && <small className="block text-violet-300">Profissional: {barbeiros.find((member) => member.id === item.barbeiro_id)?.nome ?? 'Equipe'}</small>}</span><button type="button" onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20" aria-label={`Excluir serviço ${item.nome}`}><Trash2 size={16} /></button></div>)}</div></section>
             {isBusinessOwner && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Configurações da barbearia</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Nome<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Telefone<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Endereço<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">URL da logo<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><button className="rounded-xl bg-emerald-600 px-5 py-3 font-bold hover:bg-emerald-500 sm:col-span-2"><Building2 className="mr-1 inline" size={16} /> Salvar configurações</button></form>{negocio?.endereco && <p className="mt-4 flex items-center gap-2 text-xs text-zinc-500"><MapPin size={14} /> {negocio.endereco}</p>}</section>}
             {negocio && isBusinessOwner && <BusinessGrowthSettings key={negocio.id} business={negocio} onUpdated={carregarDados} />}
+            {negocio && isBusinessOwner && <FinancialCenter key={`finance-${negocio.id}`} barbershopId={negocio.id} />}
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={20} /> Próximos agendamentos</h2><div className="space-y-3">{agendaFutura.length ? agendaFutura.map((item) => <AppointmentItem key={item.id} item={item} role={professionalAppointmentRole} onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Não há próximos agendamentos.</p>}</div></section>
           </div>
         )}
