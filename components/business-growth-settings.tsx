@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { BellRing, Copy, CreditCard, Link2, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { BusinessSettings } from '@/lib/database.types';
+import type { Barbershop } from '@/lib/database.types';
 
 async function copy(value: string) {
   if (navigator.clipboard?.writeText) {
@@ -23,7 +23,7 @@ async function copy(value: string) {
   return copied;
 }
 
-export function BusinessGrowthSettings({ business, onUpdated }: { business: BusinessSettings; onUpdated: () => Promise<void> }) {
+export function BusinessGrowthSettings({ business, onUpdated }: { business: Barbershop; onUpdated: () => Promise<void> }) {
   const [slug, setSlug] = useState(business.slug);
   const [publicBooking, setPublicBooking] = useState(business.agendamento_publico);
   const [cancellationHours, setCancellationHours] = useState(String(business.cancelamento_horas));
@@ -56,29 +56,27 @@ export function BusinessGrowthSettings({ business, onUpdated }: { business: Busi
     if (!Number.isInteger(blockDaysNumber) || blockDaysNumber < 1 || blockDaysNumber > 365) return toast.error('Informe um bloqueio entre 1 e 365 dias.');
     if (!Number.isInteger(retentionNumber) || retentionNumber < 1 || retentionNumber > 120) return toast.error('Informe uma retenção entre 1 e 120 meses.');
     setSaving(true);
-    const [{ error }, { error: legalError }] = await Promise.all([
-      supabase.rpc('atualizar_configuracoes_avancadas', {
-        p_slug: slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-        p_agendamento_publico: publicBooking,
-        p_cancelamento_horas: cancellationNumber,
-        p_sinal_percentual: depositNumber,
-        p_pix_chave: pixKey,
-        p_pix_beneficiario: pixOwner,
-        p_lembrete_email: email,
-        p_lembrete_whatsapp: whatsapp,
-        p_lembrete_push: false,
-        p_bloquear_apos_faltas: noShowsNumber,
-        p_dias_bloqueio: blockDaysNumber,
-      }),
-      supabase.rpc('atualizar_informacoes_legais', {
-        p_responsavel_legal: legalOwner,
-        p_documento_legal: legalDocument,
-        p_email_privacidade: privacyEmail,
-        p_prazo_retencao_meses: retentionNumber,
-      }),
-    ]);
+    const normalizedSlug = slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const { error } = await supabase.from('barbearias').update({
+      slug: normalizedSlug,
+      agendamento_publico: publicBooking,
+      cancelamento_horas: cancellationNumber,
+      sinal_percentual: depositNumber,
+      pix_chave: pixKey.trim() || null,
+      pix_beneficiario: pixOwner.trim() || null,
+      lembrete_email: email,
+      lembrete_whatsapp: whatsapp,
+      lembrete_push: false,
+      bloquear_apos_faltas: noShowsNumber,
+      dias_bloqueio: blockDaysNumber,
+      responsavel_legal: legalOwner.trim() || null,
+      documento_legal: legalDocument.trim() || null,
+      email_privacidade: privacyEmail.trim().toLowerCase() || null,
+      prazo_retencao_meses: retentionNumber,
+      updated_at: new Date().toISOString(),
+    }).eq('id', business.id);
     setSaving(false);
-    if (error || legalError) return toast.error(error?.message ?? legalError?.message ?? 'Não foi possível salvar.');
+    if (error) return toast.error(error.message ?? 'Não foi possível salvar.');
     await onUpdated();
     toast.success('Regras da agenda atualizadas.');
   };

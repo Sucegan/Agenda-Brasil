@@ -10,11 +10,13 @@ export async function GET(request: Request) {
   if (!await consumeRateLimit(admin, request, `business-health:${user.id}`, 30, 60)) {
     return NextResponse.json({ error: 'Limite de consultas excedido.' }, { status: 429 });
   }
-  const { data: barber } = await admin.from('barbeiros').select('id').eq('usuario_id', user.id).maybeSingle();
+  const barbershopId = new URL(request.url).searchParams.get('barbearia');
+  if (!barbershopId || !/^[0-9a-f-]{36}$/i.test(barbershopId)) return NextResponse.json({ error: 'Barbearia inválida.' }, { status: 400 });
+  const { data: barber } = await admin.from('barbeiros').select('id').eq('usuario_id', user.id).eq('barbearia_id', barbershopId).limit(1).maybeSingle();
   if (!barber) return NextResponse.json({ error: 'Acesso restrito a profissionais.' }, { status: 403 });
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const { data, error } = await admin.from('notificacoes').select('canal,status').gte('created_at', since);
+  const { data, error } = await admin.from('notificacoes').select('canal,status').contains('payload', { barbearia_id: barbershopId }).gte('created_at', since);
   if (error) return NextResponse.json({ error: 'Não foi possível consultar as automações.' }, { status: 500 });
   const counts = (data ?? []).reduce<Record<string, number>>((acc, row) => {
     const key = `${row.canal}:${row.status}`;

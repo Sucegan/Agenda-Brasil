@@ -6,8 +6,13 @@ import { SiteRights } from '@/components/site-rights';
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Termos de Uso | Agenda Brasil', description: 'Regras para uso da Agenda Brasil e dos agendamentos online.' };
 
-export default async function TermsPage() {
-  const legal = await getPublicLegalInformation();
+type TermsPageProps = { searchParams: Promise<{ estabelecimento?: string | string[] }> };
+
+export default async function TermsPage({ searchParams }: TermsPageProps) {
+  const query = await searchParams;
+  const slug = typeof query.estabelecimento === 'string' ? query.estabelecimento : 'agenda-brasil';
+  const suffix = `?estabelecimento=${encodeURIComponent(slug)}`;
+  const legal = await getPublicLegalInformation(slug);
   const business = legal?.nome || 'estabelecimento responsável';
   const contact = legal?.email_privacidade || legal?.telefone || 'canal informado pelo estabelecimento';
 
@@ -22,5 +27,5 @@ export default async function TermsPage() {
     <section><h2 className="text-lg font-bold text-white">8. Propriedade intelectual</h2><p>O software, o código, a arquitetura, o design, os textos, a identidade visual e os demais elementos originais da plataforma Agenda Brasil são de titularidade da <b className="text-zinc-100">Sucegan Tech</b>, ressalvados conteúdos de estabelecimentos, usuários e terceiros. É proibido copiar, modificar, distribuir, vender ou explorar esses elementos sem autorização prévia e expressa.</p></section>
     <section><h2 className="text-lg font-bold text-white">9. Disponibilidade e alterações</h2><p>Buscamos manter o serviço seguro e disponível, mas internet, manutenção e fornecedores externos podem causar interrupções. Funcionalidades e termos podem evoluir; mudanças relevantes terão data de atualização e, quando necessário, novo aceite.</p></section>
     <section><h2 className="text-lg font-bold text-white">10. Contato e legislação</h2><p>Dúvidas ou reclamações podem ser enviadas pelo <b className="text-zinc-100">{contact}</b>. Aplicam-se as leis brasileiras, inclusive o Código de Defesa do Consumidor e a LGPD, quando pertinentes.</p></section>
-  </div><div className="mt-8 flex flex-wrap gap-3"><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold">Voltar</Link><Link href="/privacidade" className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold">Ver privacidade</Link><Link href="/agendar" className="rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300">Agendar</Link></div><SiteRights className="mt-8 border-t border-zinc-800 pt-5" /></article></main>;
+  </div><div className="mt-8 flex flex-wrap gap-3"><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold">Voltar</Link><Link href={`/privacidade${suffix}`} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold">Ver privacidade</Link><Link href={`/agendar${suffix}`} className="rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300">Agendar</Link></div><SiteRights className="mt-8 border-t border-zinc-800 pt-5" /></article></main>;
 }

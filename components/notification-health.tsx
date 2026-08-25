@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -10,21 +10,21 @@ type Health = {
   generatedAt: string;
 };
 
-export function NotificationHealth() {
+export function NotificationHealth({ barbershopId }: { barbershopId: string }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return setLoading(false);
-    const response = await fetch('/api/business-health', { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`/api/business-health?barbearia=${encodeURIComponent(barbershopId)}`, { headers: { Authorization: `Bearer ${token}` } });
     if (response.ok) setHealth(await response.json() as Health);
     setLoading(false);
-  };
+  }, [barbershopId]);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [load]);
   const channels = health ? [
     ['E-mail', 'email', health.providers.email],
     ['WhatsApp', 'whatsapp', health.providers.whatsapp],

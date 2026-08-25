@@ -22,8 +22,8 @@ import {
   formatDate, formatWorkDays, upcomingDays, weekdayLabels, type DayChoice,
 } from '@/lib/scheduling';
 import type {
-  Appointment, AppointmentStatus, Barber, BusinessDay, BusinessHoliday,
-  BusinessSettings, PaymentStatus, PublicBarber, ScheduleBlock, Service, UserProfile,
+  Appointment, AppointmentStatus, Barber, Barbershop, BusinessDay, BusinessHoliday,
+  PaymentStatus, PublicBarber, ScheduleBlock, Service, UserProfile,
 } from '@/lib/database.types';
 
 const statuses: AppointmentStatus[] = ['agendado', 'confirmado', 'concluido', 'cancelado', 'nao_compareceu'];
@@ -35,6 +35,7 @@ const paymentStatusLabels: Record<PaymentStatus, string> = {
   dispensado: 'pagamento dispensado',
 };
 const DATA_LOAD_TIMEOUT_MS = 15_000;
+type PublicBarbershopSummary = Pick<Barbershop, 'id' | 'nome' | 'slug' | 'endereco' | 'telefone' | 'logo_url'>;
 
 function withTimeout<T>(operation: Promise<T>, milliseconds: number, message: string) {
   let timeout: ReturnType<typeof setTimeout>;
@@ -155,7 +156,10 @@ function AppointmentItem({ item, role, onStatusChange, onConfirm, onCancel, onIn
 export default function DashboardPage() {
   const [usuario, setUsuario] = useState<UserProfile | null>(null);
   const [email, setEmail] = useState('');
-  const [negocio, setNegocio] = useState<BusinessSettings | null>(null);
+  const [negocio, setNegocio] = useState<Barbershop | null>(null);
+  const [barbearias, setBarbearias] = useState<Barbershop[]>([]);
+  const [barbeariasPublicas, setBarbeariasPublicas] = useState<PublicBarbershopSummary[]>([]);
+  const [barbeariaAtivaId, setBarbeariaAtivaId] = useState<string | null>(null);
   const [barbeiro, setBarbeiro] = useState<Barber | null>(null);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [clientPoints, setClientPoints] = useState(0);
@@ -198,6 +202,9 @@ export default function DashboardPage() {
   const [enderecoNegocio, setEnderecoNegocio] = useState('');
   const [telefoneNegocio, setTelefoneNegocio] = useState('');
   const [logoNegocio, setLogoNegocio] = useState('');
+  const [criandoBarbearia, setCriandoBarbearia] = useState(false);
+  const [novaBarbeariaNome, setNovaBarbeariaNome] = useState('');
+  const [novaBarbeariaSlug, setNovaBarbeariaSlug] = useState('');
 
   const hoje = brazilDateISO();
 
@@ -216,55 +223,60 @@ export default function DashboardPage() {
       return;
     }
     setEmail(user.email ?? '');
-    const [{ data: perfil, error: perfilError }, { data: configuracoes, error: configError }, { data: feriadosData, error: feriadosError }] = await withTimeout(
-      Promise.all([
-        supabase.from('usuarios').select('*').eq('id', user.id).single(),
-        supabase.from('configuracoes_negocio').select('*').eq('id', true).maybeSingle(),
-        supabase.from('feriados_negocio').select('*').order('data'),
-      ]),
-      DATA_LOAD_TIMEOUT_MS,
-      'A agenda demorou para responder. Verifique a conexão e tente novamente.',
-    );
+    const { data: perfil, error: perfilError } = await supabase.from('usuarios').select('*').eq('id', user.id).single();
     if (perfilError || !perfil) throw new Error('Não foi possível carregar seu perfil. Confirme o e-mail e tente novamente.');
-    if (configError || feriadosError) throw configError ?? feriadosError;
     setUsuario(perfil);
     setNomePerfil(perfil.nome);
     setTelefonePerfil(perfil.telefone ?? '');
-    setNegocio(configuracoes);
-    setFeriados(feriadosData ?? []);
-    if (configuracoes) {
-      setNomeNegocio(configuracoes.nome);
-      setEnderecoNegocio(configuracoes.endereco ?? '');
-      setTelefoneNegocio(configuracoes.telefone ?? '');
-      setLogoNegocio(configuracoes.logo_url ?? '');
-    }
     if (perfil.tipo === 'cliente') {
-      const [{ data: profissionais, error: profissionaisError }, { data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: cliente, error: clienteError }] = await withTimeout(
+      const { data: publicBusinesses, error: businessesError } = await supabase.rpc('listar_barbearias_publicas');
+      const selectedBusiness = publicBusinesses?.find((item) => item.id === barbeariaAtivaId) ?? publicBusinesses?.[0];
+      if (businessesError || !selectedBusiness) throw businessesError ?? new Error('Nenhuma barbearia pública disponível.');
+      setBarbeariasPublicas(publicBusinesses ?? []);
+      if (barbeariaAtivaId !== selectedBusiness.id) setBarbeariaAtivaId(selectedBusiness.id);
+      const [{ data: business }, { data: catalog, error: catalogError }, { data: agendaData, error: agendaError }, { data: clienteStatus, error: clienteError }] = await withTimeout(
         Promise.all([
-          supabase.rpc('listar_barbeiros_publicos'),
-          supabase.from('servicos').select('*').order('nome'),
-          supabase.rpc('listar_meus_agendamentos'),
-          supabase.from('clientes').select('id,pontos_fidelidade').eq('usuario_id', user.id).single(),
+          supabase.rpc('obter_barbearia_autenticada', { p_barbearia_id: selectedBusiness.id }),
+          supabase.rpc('obter_catalogo_publico', { p_slug: selectedBusiness.slug }),
+          supabase.rpc('listar_meus_agendamentos_barbearia', { p_barbearia_id: selectedBusiness.id, p_barbeiro_id: 0 }),
+          supabase.rpc('obter_status_cliente_barbearia', { p_barbearia_id: selectedBusiness.id }).single(),
         ]),
         DATA_LOAD_TIMEOUT_MS,
         'Os dados do cliente demoraram para responder. Tente novamente.',
       );
-      if (profissionaisError || servicosError || agendaError || clienteError || !cliente) throw profissionaisError ?? servicosError ?? agendaError ?? clienteError ?? new Error('Não foi possível carregar o perfil de cliente.');
-      setBarbeiros(profissionais ?? []);
-      setServicos(servicosData ?? []);
+      if (catalogError || agendaError || clienteError || !clienteStatus || !business || !catalog) throw catalogError ?? agendaError ?? clienteError ?? new Error('Não foi possível carregar o perfil de cliente.');
+      setNegocio(business);
+      setBarbeiros(catalog.barbeiros);
+      setServicos(catalog.servicos);
+      setFeriados(catalog.feriados.map((item) => ({ ...item, barbearia_id: business.id, criado_por: '', created_at: '' })));
       setAgendamentos(agendaData ?? []);
       setBarbeiro(null);
-      setClienteId(cliente.id);
-      setClientPoints(cliente.pontos_fidelidade);
+      setClienteId(clienteStatus.cliente_id);
+      setClientPoints(clienteStatus.pontos_fidelidade);
       setBloqueios([]);
       return;
     }
-    const { data: profissional, error: profissionalError } = await supabase.from('barbeiros').select('*').eq('usuario_id', user.id).single();
-    if (profissionalError || !profissional) throw new Error('Não foi possível carregar o perfil profissional.');
+    const { data: businesses, error: businessesError } = await supabase.rpc('listar_minhas_barbearias');
+    if (businessesError || !businesses?.length) throw businessesError ?? new Error('Nenhuma barbearia vinculada à sua conta.');
+    setBarbearias(businesses);
+    const selectedBusinessId = businesses.some((item) => item.id === barbeariaAtivaId) ? barbeariaAtivaId! : businesses[0].id;
+    if (barbeariaAtivaId !== selectedBusinessId) setBarbeariaAtivaId(selectedBusinessId);
+    const [{ data: business, error: businessError }, { data: holidays, error: holidaysError }, { data: profissional, error: profissionalError }] = await Promise.all([
+      supabase.from('barbearias').select('*').eq('id', selectedBusinessId).single(),
+      supabase.from('feriados_negocio').select('*').eq('barbearia_id', selectedBusinessId).order('data'),
+      supabase.from('barbeiros').select('*').eq('usuario_id', user.id).eq('barbearia_id', selectedBusinessId).single(),
+    ]);
+    if (businessError || holidaysError || profissionalError || !business || !profissional) throw businessError ?? holidaysError ?? profissionalError ?? new Error('Não foi possível carregar a barbearia selecionada.');
+    setNegocio(business);
+    setFeriados(holidays ?? []);
+    setNomeNegocio(business.nome);
+    setEnderecoNegocio(business.endereco ?? '');
+    setTelefoneNegocio(business.telefone ?? '');
+    setLogoNegocio(business.logo_url ?? '');
     const [{ data: servicosData, error: servicosError }, { data: agendaData, error: agendaError }, { data: bloqueiosData, error: bloqueiosError }] = await withTimeout(
       Promise.all([
         supabase.from('servicos').select('*').eq('barbeiro_id', profissional.id).order('nome'),
-        supabase.rpc('listar_meus_agendamentos'),
+        supabase.rpc('listar_meus_agendamentos_barbearia', { p_barbearia_id: selectedBusinessId, p_barbeiro_id: profissional.id }),
         supabase.from('bloqueios_agenda').select('*').eq('barbeiro_id', profissional.id).order('data_inicio'),
       ]),
       DATA_LOAD_TIMEOUT_MS,
@@ -281,7 +293,7 @@ export default function DashboardPage() {
     setAlmocoInicio(profissional.horario_almoco_inicio ? displayTime(profissional.horario_almoco_inicio) : '');
     setAlmocoFim(profissional.horario_almoco_fim ? displayTime(profissional.horario_almoco_fim) : '');
     setDiasTrabalho(profissional.dias_trabalho);
-  }, []);
+  }, [barbeariaAtivaId]);
 
   const recarregar = useCallback(() => {
     setLoading(true);
@@ -476,11 +488,13 @@ export default function DashboardPage() {
 
   const salvarBloqueio = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!barbeiro) return toast.error('Selecione a barbearia e o profissional.');
     const diaFim = bloqueioFim || bloqueioInicio;
     if (!bloqueioInicio || !diaFim || !bloqueioMotivo.trim()) return toast.error('Informe período e motivo do bloqueio.');
     const horarioParcial = bloqueioTipo === 'pausa';
     const toastId = toast.loading('Bloqueando agenda...');
     const { error } = await supabase.rpc('criar_bloqueio_agenda', {
+      p_barbeiro_id: barbeiro.id,
       p_data_inicio: bloqueioInicio, p_data_fim: diaFim,
       p_hora_inicio: horarioParcial ? `${bloqueioHoraInicio}:00` : null,
       p_hora_fim: horarioParcial ? `${bloqueioHoraFim}:00` : null,
@@ -502,9 +516,9 @@ export default function DashboardPage() {
 
   const salvarFeriado = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!usuario || !feriadoData || !feriadoDescricao.trim()) return toast.error('Informe a data e a descrição do feriado.');
+    if (!usuario || !barbeariaAtivaId || !feriadoData || !feriadoDescricao.trim()) return toast.error('Informe a data e a descrição do feriado.');
     const toastId = toast.loading('Salvando feriado...');
-    const { error } = await supabase.from('feriados_negocio').upsert({ data: feriadoData, descricao: feriadoDescricao.trim(), criado_por: usuario.id }, { onConflict: 'data' });
+    const { error } = await supabase.from('feriados_negocio').upsert({ barbearia_id: barbeariaAtivaId, data: feriadoData, descricao: feriadoDescricao.trim(), criado_por: usuario.id }, { onConflict: 'barbearia_id,data' });
     if (error) return toast.error(error.message, { id: toastId });
     setFeriadoData(''); setFeriadoDescricao('');
     await carregarDados();
@@ -513,7 +527,8 @@ export default function DashboardPage() {
 
   const removerFeriado = async (data: string) => {
     if (!window.confirm('Remover este feriado?')) return;
-    const { error } = await supabase.from('feriados_negocio').delete().eq('data', data);
+    if (!barbeariaAtivaId) return;
+    const { error } = await supabase.from('feriados_negocio').delete().eq('barbearia_id', barbeariaAtivaId).eq('data', data);
     if (error) return toast.error(error.message);
     await carregarDados();
     toast.success('Feriado removido.');
@@ -523,22 +538,39 @@ export default function DashboardPage() {
     event.preventDefault();
     if (!nomeNegocio.trim()) return toast.error('Informe o nome da barbearia.');
     const toastId = toast.loading('Salvando configurações...');
-    const { error } = await supabase.from('configuracoes_negocio').update({
+    if (!barbeariaAtivaId) return toast.error('Selecione uma barbearia.');
+    const { error } = await supabase.from('barbearias').update({
       nome: nomeNegocio.trim(), endereco: enderecoNegocio.trim() || null,
       telefone: telefoneNegocio.trim() || null, logo_url: logoNegocio.trim() || null,
       updated_at: new Date().toISOString(),
-    }).eq('id', true);
+    }).eq('id', barbeariaAtivaId);
     if (error) return toast.error(error.message, { id: toastId });
     await carregarDados();
     toast.success('Configurações salvas!', { id: toastId });
   };
 
   const criarConvite = async () => {
-    const { data, error } = await supabase.rpc('criar_convite_barbeiro');
+    if (!barbeariaAtivaId) return toast.error('Selecione uma barbearia.');
+    const { data, error } = await supabase.rpc('criar_convite_barbeiro', { p_barbearia_id: barbeariaAtivaId });
     if (error || !data) return toast.error(error?.message ?? 'Não foi possível criar o convite.');
     const copied = await copyText(`${window.location.origin}/?tipo=barbeiro&convite=${data}`);
     if (copied) toast.success('Convite copiado. Válido por 7 dias e para um único uso.');
     else toast.error('Não foi possível copiar o convite.');
+  };
+
+  const criarNovaBarbearia = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const nome = novaBarbeariaNome.trim();
+    const slug = novaBarbeariaSlug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (nome.length < 2 || slug.length < 3) return toast.error('Informe nome e identificador válidos.');
+    const toastId = toast.loading('Criando barbearia...');
+    const { data, error } = await supabase.rpc('criar_barbearia', { p_nome: nome, p_slug: slug });
+    if (error || !data) return toast.error(error?.message ?? 'Não foi possível criar a barbearia.', { id: toastId });
+    setNovaBarbeariaNome('');
+    setNovaBarbeariaSlug('');
+    setCriandoBarbearia(false);
+    setBarbeariaAtivaId(data.id);
+    toast.success('Barbearia criada. Complete agora os dados e serviços.', { id: toastId });
   };
 
   const sair = async () => {
@@ -569,6 +601,7 @@ export default function DashboardPage() {
   const proximosCliente = agendamentos.filter((item) => item.data >= hoje && !['concluido', 'cancelado', 'nao_compareceu'].includes(item.status));
   const historicoCliente = agendamentos.filter((item) => !proximosCliente.some((proximo) => proximo.id === item.id));
   const diasOrdenados: BusinessDay[] = [0, 1, 2, 3, 4, 5, 6];
+  const isBusinessOwner = Boolean(negocio && negocio.proprietario_id === usuario.id);
 
   return (
     <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100 selection:bg-emerald-500/30">
@@ -587,6 +620,34 @@ export default function DashboardPage() {
       </header>
 
       <section className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+        {usuario?.tipo === 'cliente' && barbeariasPublicas.length > 1 && (
+          <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
+            <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Escolha a barbearia
+              <select value={barbeariaAtivaId ?? ''} onChange={(event) => { setBarbeariaAtivaId(event.target.value); setStep(1); setSelectedBarbeiro(null); setSelectedServico(null); }} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-emerald-500">
+                {barbeariasPublicas.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+              </select>
+            </label>
+          </section>
+        )}
+        {usuario?.tipo === 'barbeiro' && (
+          <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="flex-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Barbearia ativa
+                <select value={barbeariaAtivaId ?? ''} onChange={(event) => { setBarbeariaAtivaId(event.target.value); setStep(1); setSelectedBarbeiro(null); }} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white outline-none focus:border-emerald-500">
+                  {barbearias.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                </select>
+              </label>
+              <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>
+            </div>
+            {criandoBarbearia && (
+              <form onSubmit={criarNovaBarbearia} className="mt-4 grid gap-3 border-t border-zinc-800 pt-4 sm:grid-cols-2">
+                <label className="text-xs font-bold text-zinc-400">NOME<input value={novaBarbeariaNome} onChange={(event) => { const value = event.target.value; setNovaBarbeariaNome(value); setNovaBarbeariaSlug(value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')); }} placeholder="Ex.: Barbearia Central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
+                <label className="text-xs font-bold text-zinc-400">IDENTIFICADOR DO LINK<input value={novaBarbeariaSlug} onChange={(event) => setNovaBarbeariaSlug(event.target.value)} placeholder="barbearia-central" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
+                <button className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-500 sm:col-span-2">Criar e configurar barbearia</button>
+              </form>
+            )}
+          </section>
+        )}
         {perfilAberto && (
           <section className="rounded-2xl border border-emerald-500/25 bg-zinc-900/80 p-5 shadow-xl">
             <div className="mb-4 flex items-center gap-2"><UserCog className="text-emerald-400" size={20} /><h2 className="font-bold">Meu perfil</h2></div>
@@ -608,7 +669,7 @@ export default function DashboardPage() {
               {step === 2 && <><p className="mb-3 text-sm text-zinc-400">Serviços de <b className="text-zinc-200">{selectedBarbeiro?.nome}</b></p><div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{servicos.filter((servico) => servico.barbeiro_id === selectedBarbeiro?.id).map((servico) => <button key={servico.id} onClick={() => { setSelectedServico(servico); setStep(3); }} className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-left hover:bg-amber-500 hover:text-zinc-950"><b className="block">{servico.nome}</b><span className="mt-1 block text-xs">{formatCurrency(Number(servico.preco))} · {servico.duracao} min</span></button>)}</div></>}
               {step === 3 && <><div className="mb-4 flex flex-wrap gap-2 text-xs"><span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5">{selectedBarbeiro?.nome}</span><span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-amber-300">{selectedServico?.nome}</span></div><p className="mb-3 text-sm text-zinc-400">Escolha uma data disponível.</p><div className="flex gap-2 overflow-x-auto pb-3">{diasProximos.map((dia) => { const feriado = feriadosPorData.get(dia.iso); const indisponivel = !selectedBarbeiro?.dias_trabalho.includes(dia.businessDay) || Boolean(feriado); return <button key={dia.iso} disabled={indisponivel} title={feriado ?? undefined} onClick={() => { void calcularHorarios(dia.iso); }} className={`shrink-0 rounded-xl border px-3 py-2 text-center text-xs disabled:cursor-not-allowed disabled:opacity-35 ${selectedData === dia.iso ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-emerald-500/50'}`}><b className="block">{dia.day} {dia.month}</b><span>{dia.weekday}</span></button>; })}</div>{selectedData && <div className="mt-4">{horariosDisponiveis.length ? <><p className="mb-3 text-sm text-zinc-400">Escolha o horário.</p><div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{horariosDisponiveis.map((horario) => <button key={horario} onClick={() => setSelectedHorario(horario)} className={`rounded-lg border py-2 text-sm font-bold ${selectedHorario === horario ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-300'}`}>{horario}</button>)}</div><button onClick={() => { void agendar(); }} disabled={!selectedHorario} className="mt-5 w-full rounded-xl bg-emerald-600 py-3.5 font-bold text-white hover:bg-emerald-500 disabled:opacity-50">Agendar horário</button></> : <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200"><p>Não há horários livres nesta data.</p>{selectedBarbeiro && selectedServico && <JoinWaitlistButton barberId={selectedBarbeiro.id} serviceId={selectedServico.id} date={selectedData} />}</div>}</div>}</>}
             </section>
-            <ClientWaitlist />
+            <ClientWaitlist barberIds={barbeiros.map((item) => item.id)} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Próximos horários</h2><div className="space-y-3">{proximosCliente.length ? proximosCliente.map((item) => <AppointmentItem key={item.id} item={item} role="cliente" pixKey={negocio?.pix_chave} pixOwner={negocio?.pix_beneficiario} onInformPayment={() => { void informarPagamento(item.id); }} onConfirm={() => { void confirmarAgendamento(item.id); }} onCancel={() => { void cancelarAgendamento(item.id); }} />) : <p className="text-sm text-zinc-500">Você não tem próximos horários.</p>}</div></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Clock className="text-zinc-400" size={20} /> Histórico</h2><div className="space-y-3">{historicoCliente.length ? historicoCliente.map((item) => <AppointmentItem key={item.id} item={item} role="cliente" />) : <p className="text-sm text-zinc-500">Seu histórico aparecerá aqui.</p>}</div></section>
             <ReviewLoyalty role="cliente" appointments={agendamentos} points={clientPoints} />
@@ -617,14 +678,14 @@ export default function DashboardPage() {
 
         {usuario?.tipo === 'barbeiro' && barbeiro && (
           <div className="space-y-5">
-            <section className="flex flex-col justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-300"><UserPlus size={22} /></span><span><b className="block">Convidar profissional</b><small className="text-zinc-500">Link único, válido por 7 dias.</small></span></div><button onClick={() => { void criarConvite(); }} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-500"><Copy size={15} /> Copiar convite</button></section>
+            {isBusinessOwner && <section className="flex flex-col justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl sm:flex-row sm:items-center"><div className="flex items-center gap-3"><span className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-emerald-300"><UserPlus size={22} /></span><span><b className="block">Convidar profissional</b><small className="text-zinc-500">Link único, válido por 7 dias.</small></span></div><button onClick={() => { void criarConvite(); }} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-500"><Copy size={15} /> Copiar convite</button></section>}
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatCard label="Faturamento hoje" value={formatCurrency(faturamentoHoje)} icon={Wallet} /><StatCard label="Agenda de hoje" value={`${agendaHoje.length} horários`} icon={CalendarDays} color="blue" /><StatCard label="Previsão futura" value={formatCurrency(previsaoFutura)} icon={TrendingUp} color="amber" /><StatCard label="Faltas no mês" value={`${relatorioMes.faltas} clientes`} icon={CircleX} color="orange" /></section>
-            <ProfessionalWaitlist />
+            <ProfessionalWaitlist barberId={barbeiro.id} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarCheck2 className="text-emerald-400" size={20} /> Agenda de hoje</h2><div className="space-y-3">{agendaHoje.length ? agendaHoje.map((item) => <AppointmentItem key={item.id} item={item} role="barbeiro" onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Nenhum cliente agendado para hoje.</p>}</div></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><BarChart3 className="text-amber-400" size={20} /> Relatório do mês</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><StatCard label="Realizado" value={formatCurrency(relatorioMes.receitas)} icon={Wallet} /><StatCard label="Ticket médio" value={formatCurrency(relatorioMes.ticket)} icon={TrendingUp} color="amber" /><StatCard label="Serviço favorito" value={relatorioMes.favorito ? `${relatorioMes.favorito[0]} (${relatorioMes.favorito[1]})` : 'Sem dados'} icon={Award} color="blue" /><StatCard label="Cliente frequente" value={relatorioMes.frequente ? `${relatorioMes.frequente[0]} (${relatorioMes.frequente[1]})` : 'Sem dados'} icon={Users} color="orange" /></div></section>
             <ReportTools appointments={agendamentos} />
-            <NotificationHealth />
-            <ReviewLoyalty role="barbeiro" appointments={agendamentos} />
+            <NotificationHealth barbershopId={barbeiro.barbearia_id} />
+            <ReviewLoyalty role="barbeiro" appointments={agendamentos} barberId={barbeiro.id} />
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Clock className="text-emerald-400" size={20} /> Expediente</h2><form onSubmit={salvarExpediente} className="space-y-4"><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={horarioInicio} onChange={(event) => setHorarioInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={horarioFim} onChange={(event) => setHorarioFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-emerald-500" /></label><button className="self-end rounded-xl bg-emerald-600 p-3 font-bold hover:bg-emerald-500">Salvar expediente</button></div><div className="flex flex-wrap gap-2">{diasOrdenados.map((dia) => <button key={dia} type="button" onClick={() => setDiasTrabalho((atual) => atual.includes(dia) ? atual.filter((item) => item !== dia) : [...atual, dia].sort((a, b) => a - b) as BusinessDay[])} className={`rounded-lg border px-3 py-2 text-xs font-bold ${diasTrabalho.includes(dia) ? 'border-emerald-400 bg-emerald-500 text-zinc-950' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}>{weekdayLabels[dia]}</button>)}</div></form></section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-2 flex items-center gap-2 text-lg font-black"><Clock className="text-amber-400" size={20} /> Intervalo diário de almoço</h2><p className="mb-4 text-sm text-zinc-500">Esse período será bloqueado automaticamente em todos os dias de expediente. Para remover, deixe os dois campos vazios e salve.</p><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Início<input type="time" value={almocoInicio} onChange={(event) => setAlmocoInicio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Fim<input type="time" value={almocoFim} onChange={(event) => setAlmocoFim(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none focus:border-amber-500" /></label><button type="button" onClick={() => { void salvarAlmoco(); }} className="self-end rounded-xl bg-amber-500 p-3 font-bold text-zinc-950 hover:bg-amber-400">Salvar almoço</button></div></section>
             <section className="grid gap-5 lg:grid-cols-2">
@@ -632,8 +693,8 @@ export default function DashboardPage() {
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarX2 className="text-orange-400" size={20} /> Feriados</h2><form onSubmit={salvarFeriado} className="space-y-3"><label className="block text-xs font-bold text-zinc-400">DATA<input type="date" value={feriadoData} onChange={(event) => setFeriadoData(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><label className="block text-xs font-bold text-zinc-400">DESCRIÇÃO<input value={feriadoDescricao} onChange={(event) => setFeriadoDescricao(event.target.value)} placeholder="Ex.: Natal" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 outline-none" /></label><button className="w-full rounded-xl bg-orange-600 py-3 font-bold hover:bg-orange-500">Salvar feriado</button></form><div className="mt-4 space-y-2">{feriados.map((item) => <div key={item.data} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 text-xs"><span>{formatDate(item.data)} <b className="ml-2 text-orange-200">{item.descricao}</b></span><button onClick={() => { void removerFeriado(item.data); }} className="text-red-300 hover:text-red-200"><Trash2 size={15} /></button></div>)}{!feriados.length && <p className="text-xs text-zinc-500">Nenhum feriado cadastrado.</p>}</div></div>
             </section>
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Scissors className="text-amber-400" size={20} /> Serviços</h2><form onSubmit={adicionarServico} className="grid gap-3 md:grid-cols-4"><input value={novoServicoNome} onChange={(event) => setNovoServicoNome(event.target.value)} placeholder="Nome do serviço" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500 md:col-span-2" /><input type="number" min="0.01" step="0.01" value={novoServicoPreco} onChange={(event) => setNovoServicoPreco(event.target.value)} placeholder="Preço (ex: 45.00)" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><input type="number" min="5" step="5" value={novoServicoDuracao} onChange={(event) => setNovoServicoDuracao(event.target.value)} placeholder="Duração" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-amber-500" /><button className="rounded-xl bg-amber-500 px-4 py-3 font-bold text-zinc-950 hover:bg-amber-400 md:col-span-4"><Plus className="mr-1 inline" size={16} /> Adicionar serviço</button></form><div className="mt-4 grid gap-3 sm:grid-cols-2">{servicos.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"><span><b className="block">{item.nome}</b><small className="text-zinc-500">{formatCurrency(Number(item.preco))} · {item.duracao} min</small></span><button onClick={() => { void excluirServico(item.id); }} className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20"><Trash2 size={16} /></button></div>)}</div></section>
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Configurações da barbearia</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Nome<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Telefone<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Endereço<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">URL da logo<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><button className="rounded-xl bg-emerald-600 px-5 py-3 font-bold hover:bg-emerald-500 sm:col-span-2"><Building2 className="mr-1 inline" size={16} /> Salvar configurações</button></form>{negocio?.endereco && <p className="mt-4 flex items-center gap-2 text-xs text-zinc-500"><MapPin size={14} /> {negocio.endereco}</p>}</section>
-            {negocio && <BusinessGrowthSettings business={negocio} onUpdated={carregarDados} />}
+            {isBusinessOwner && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><Settings className="text-emerald-400" size={20} /> Configurações da barbearia</h2><form onSubmit={salvarNegocio} className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Nome<input value={nomeNegocio} onChange={(event) => setNomeNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Telefone<input value={telefoneNegocio} onChange={(event) => setTelefoneNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Endereço<input value={enderecoNegocio} onChange={(event) => setEnderecoNegocio(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><label className="text-xs font-bold uppercase tracking-wider text-zinc-400">URL da logo<input type="url" value={logoNegocio} onChange={(event) => setLogoNegocio(event.target.value)} placeholder="https://..." className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-emerald-500" /></label><button className="rounded-xl bg-emerald-600 px-5 py-3 font-bold hover:bg-emerald-500 sm:col-span-2"><Building2 className="mr-1 inline" size={16} /> Salvar configurações</button></form>{negocio?.endereco && <p className="mt-4 flex items-center gap-2 text-xs text-zinc-500"><MapPin size={14} /> {negocio.endereco}</p>}</section>}
+            {negocio && isBusinessOwner && <BusinessGrowthSettings key={negocio.id} business={negocio} onUpdated={carregarDados} />}
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 text-lg font-black"><CalendarDays className="text-emerald-400" size={20} /> Próximos agendamentos</h2><div className="space-y-3">{agendaFutura.length ? agendaFutura.map((item) => <AppointmentItem key={item.id} item={item} role="barbeiro" onPaymentStatusChange={(status) => { void atualizarPagamento(item.id, status); }} onStatusChange={(status) => { void atualizarStatus(item.id, status); }} />) : <p className="text-sm text-zinc-500">Não há próximos agendamentos.</p>}</div></section>
           </div>
         )}

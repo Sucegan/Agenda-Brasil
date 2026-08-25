@@ -119,8 +119,9 @@ export default function PublicBookingPage() {
   useEffect(() => {
     let active = true;
     const initialize = async () => {
+      const requestedSlug = new URLSearchParams(window.location.search).get('estabelecimento')?.trim().toLowerCase() || 'agenda-brasil';
       const [{ data, error }, { data: userData, error: userError }] = await Promise.all([
-        supabase.rpc('obter_catalogo_publico'),
+        supabase.rpc('obter_catalogo_publico', { p_slug: requestedSlug }),
         supabase.auth.getUser(),
       ]);
       if (!active) return;
@@ -310,7 +311,7 @@ export default function PublicBookingPage() {
                 <label className="text-xs font-bold text-zinc-400">NOME<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
                 <label className="text-xs font-bold text-zinc-400">WHATSAPP<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
                 <label className="text-xs font-bold text-zinc-400 sm:col-span-2">E-MAIL<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-white" /></label>
-                <label className="flex items-start gap-2 text-xs text-zinc-400 sm:col-span-2"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href="/termos" className="text-emerald-400 underline">termos de uso</Link> e a <Link href="/privacidade" className="text-emerald-400 underline">política de privacidade</Link>.</span></label>
+                <label className="flex items-start gap-2 text-xs text-zinc-400 sm:col-span-2"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href={`/termos?estabelecimento=${encodeURIComponent(catalog.negocio.slug)}`} className="text-emerald-400 underline">termos de uso</Link> e a <Link href={`/privacidade?estabelecimento=${encodeURIComponent(catalog.negocio.slug)}`} className="text-emerald-400 underline">política de privacidade</Link>.</span></label>
                 <div className="sm:col-span-2"><Captcha onToken={setCaptchaToken} /></div>
               </div>
             )}

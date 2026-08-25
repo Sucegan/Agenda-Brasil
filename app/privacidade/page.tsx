@@ -6,8 +6,13 @@ import { SiteRights } from '@/components/site-rights';
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Política de Privacidade | Agenda Brasil', description: 'Como a Agenda Brasil trata e protege dados pessoais.' };
 
-export default async function PrivacyPage() {
-  const legal = await getPublicLegalInformation();
+type PrivacyPageProps = { searchParams: Promise<{ estabelecimento?: string | string[] }> };
+
+export default async function PrivacyPage({ searchParams }: PrivacyPageProps) {
+  const query = await searchParams;
+  const slug = typeof query.estabelecimento === 'string' ? query.estabelecimento : 'agenda-brasil';
+  const suffix = `?estabelecimento=${encodeURIComponent(slug)}`;
+  const legal = await getPublicLegalInformation(slug);
   const controller = legal?.responsavel_legal || legal?.nome || 'estabelecimento responsável pela agenda';
   const contact = legal?.email_privacidade || legal?.telefone || 'o canal de contato informado pelo estabelecimento';
   const retention = legal?.prazo_retencao_meses ?? 24;
@@ -22,5 +27,5 @@ export default async function PrivacyPage() {
     <section><h2 className="text-lg font-bold text-white">7. Seus direitos</h2><p>Nos termos da LGPD, você pode pedir confirmação e acesso, correção, portabilidade quando aplicável, informação sobre compartilhamentos, revisão de consentimentos, oposição e eliminação de dados tratados com consentimento. A conta também oferece exportação e solicitação de exclusão.</p></section>
     <section><h2 className="text-lg font-bold text-white">8. Cookies e armazenamento local</h2><p>Usamos somente o armazenamento necessário para manter a sessão, proteger o acesso e lembrar preferências técnicas. Não usamos publicidade comportamental neste serviço.</p></section>
     <section><h2 className="text-lg font-bold text-white">9. Contato</h2><p>Solicitações de privacidade devem ser enviadas por <b className="text-zinc-100">{contact}</b>{legal?.endereco ? ` ou ao endereço ${legal.endereco}` : ''}. Poderemos pedir confirmação de identidade para proteger a conta.</p></section>
-  </div><div className="mt-8 flex flex-wrap gap-3"><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold">Voltar</Link><Link href="/termos" className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold">Ver termos</Link><Link href="/agendar" className="rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300">Agendar</Link></div><SiteRights className="mt-8 border-t border-zinc-800 pt-5" /></article></main>;
+  </div><div className="mt-8 flex flex-wrap gap-3"><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold">Voltar</Link><Link href={`/termos${suffix}`} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold">Ver termos</Link><Link href={`/agendar${suffix}`} className="rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300">Agendar</Link></div><SiteRights className="mt-8 border-t border-zinc-800 pt-5" /></article></main>;
 }

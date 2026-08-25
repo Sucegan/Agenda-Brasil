@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 
 type Review = Database['public']['Tables']['avaliacoes']['Row'];
 
-export function ReviewLoyalty({ role, appointments, points = 0 }: { role: 'cliente' | 'barbeiro'; appointments: Appointment[]; points?: number }) {
+export function ReviewLoyalty({ role, appointments, points = 0, barberId }: { role: 'cliente' | 'barbeiro'; appointments: Appointment[]; points?: number; barberId?: number }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [rating, setRating] = useState(5);
@@ -17,9 +17,11 @@ export function ReviewLoyalty({ role, appointments, points = 0 }: { role: 'clien
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('avaliacoes').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('avaliacoes').select('*').order('created_at', { ascending: false });
+    if (role === 'barbeiro' && barberId) query = query.eq('barbeiro_id', barberId);
+    const { data } = await query;
     setReviews(data ?? []);
-  }, []);
+  }, [barberId, role]);
   useEffect(() => { void load(); }, [load]);
 
   const reviewedIds = useMemo(() => new Set(reviews.map((review) => review.agendamento_id)), [reviews]);

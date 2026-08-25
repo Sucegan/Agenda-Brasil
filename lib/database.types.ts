@@ -16,6 +16,12 @@ type Relationship = {
 export interface Database {
   public: {
     Tables: {
+      barbearias: {
+        Row: { id: string; proprietario_id: string; nome: string; slug: string; endereco: string | null; telefone: string | null; logo_url: string | null; agendamento_publico: boolean; cancelamento_horas: number; sinal_percentual: number; pix_chave: string | null; pix_beneficiario: string | null; lembrete_email: boolean; lembrete_whatsapp: boolean; lembrete_push: boolean; bloquear_apos_faltas: number; dias_bloqueio: number; responsavel_legal: string | null; documento_legal: string | null; email_privacidade: string | null; prazo_retencao_meses: number; ativa: boolean; created_at: string; updated_at: string };
+        Insert: { id?: string; proprietario_id: string; nome: string; slug: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; ativa?: boolean; created_at?: string; updated_at?: string };
+        Update: { nome?: string; slug?: string; endereco?: string | null; telefone?: string | null; logo_url?: string | null; agendamento_publico?: boolean; cancelamento_horas?: number; sinal_percentual?: number; pix_chave?: string | null; pix_beneficiario?: string | null; lembrete_email?: boolean; lembrete_whatsapp?: boolean; lembrete_push?: boolean; bloquear_apos_faltas?: number; dias_bloqueio?: number; responsavel_legal?: string | null; documento_legal?: string | null; email_privacidade?: string | null; prazo_retencao_meses?: number; ativa?: boolean; updated_at?: string };
+        Relationships: [Relationship];
+      };
       usuarios: {
         Row: { id: string; nome: string; telefone: string | null; tipo: AccountType; created_at: string; termos_aceitos_em: string | null; marketing_opt_in: boolean; lembretes_email: boolean; lembretes_whatsapp: boolean; lembretes_push: boolean };
         Insert: { id: string; nome: string; telefone?: string | null; tipo: AccountType; created_at?: string; termos_aceitos_em?: string | null; marketing_opt_in?: boolean; lembretes_email?: boolean; lembretes_whatsapp?: boolean; lembretes_push?: boolean };
@@ -29,8 +35,8 @@ export interface Database {
         Relationships: [];
       };
       feriados_negocio: {
-        Row: { data: string; descricao: string; criado_por: string; created_at: string };
-        Insert: { data: string; descricao: string; criado_por: string };
+        Row: { barbearia_id: string; data: string; descricao: string; criado_por: string; created_at: string };
+        Insert: { barbearia_id: string; data: string; descricao: string; criado_por: string };
         Update: { data?: string; descricao?: string };
         Relationships: [Relationship];
       };
@@ -41,8 +47,8 @@ export interface Database {
         Relationships: [Relationship];
       };
       barbeiros: {
-        Row: { id: number; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[] };
-        Insert: { id?: never; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
+        Row: { id: number; barbearia_id: string; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[] };
+        Insert: { id?: never; barbearia_id: string; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
         Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[] };
         Relationships: [Relationship];
       };
@@ -51,6 +57,12 @@ export interface Database {
         Insert: { id?: never; nome: string; telefone: string; email?: string | null; usuario_id: string; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null; pontos_fidelidade?: number };
         Update: { nome?: string; telefone?: string; email?: string | null; faltas?: number; bloqueado_ate?: string | null; observacoes?: string | null; pontos_fidelidade?: number };
         Relationships: [Relationship];
+      };
+      clientes_barbearias: {
+        Row: { barbearia_id: string; cliente_id: number; faltas: number; bloqueado_ate: string | null; pontos_fidelidade: number; created_at: string; updated_at: string };
+        Insert: { barbearia_id: string; cliente_id: number; faltas?: number; bloqueado_ate?: string | null; pontos_fidelidade?: number; created_at?: string; updated_at?: string };
+        Update: { faltas?: number; bloqueado_ate?: string | null; pontos_fidelidade?: number; updated_at?: string };
+        Relationships: [Relationship, Relationship];
       };
       servicos: {
         Row: { id: number; nome: string; preco: number; duracao: number; barbeiro_id: number };
@@ -158,15 +170,19 @@ export interface Database {
         Returns: undefined;
       };
       listar_barbeiros_publicos: {
-        Args: Record<string, never>;
+        Args: { p_barbearia_id: string };
         Returns: PublicBarber[];
       };
       listar_meus_agendamentos: {
-        Args: Record<string, never>;
+        Args: { p_barbeiro_id: number };
+        Returns: Database["public"]["Tables"]["agendamentos"]["Row"][];
+      };
+      listar_meus_agendamentos_barbearia: {
+        Args: { p_barbearia_id: string; p_barbeiro_id: number };
         Returns: Database["public"]["Tables"]["agendamentos"]["Row"][];
       };
       criar_convite_barbeiro: {
-        Args: Record<string, never>;
+        Args: { p_barbearia_id: string };
         Returns: string;
       };
       atualizar_meu_perfil: {
@@ -178,19 +194,24 @@ export interface Database {
         Returns: undefined;
       };
       criar_bloqueio_agenda: {
-        Args: { p_data_inicio: string; p_data_fim: string; p_hora_inicio: string | null; p_hora_fim: string | null; p_tipo: "pausa" | "folga" | "ferias"; p_motivo: string };
+        Args: { p_barbeiro_id: number; p_data_inicio: string; p_data_fim: string; p_hora_inicio: string | null; p_hora_fim: string | null; p_tipo: "pausa" | "folga" | "ferias"; p_motivo: string };
         Returns: Database["public"]["Tables"]["bloqueios_agenda"]["Row"];
       };
       obter_catalogo_publico: {
-        Args: Record<string, never>;
+        Args: { p_slug: string };
         Returns: PublicCatalog;
       };
+      listar_minhas_barbearias: { Args: Record<string, never>; Returns: Database["public"]["Tables"]["barbearias"]["Row"][] };
+      listar_barbearias_publicas: { Args: Record<string, never>; Returns: Pick<Database["public"]["Tables"]["barbearias"]["Row"], "id" | "nome" | "slug" | "endereco" | "telefone" | "logo_url">[] };
+      obter_barbearia_autenticada: { Args: { p_barbearia_id: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] | null };
+      criar_barbearia: { Args: { p_nome: string; p_slug: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      obter_status_cliente_barbearia: { Args: { p_barbearia_id: string }; Returns: { cliente_id: number; faltas: number; bloqueado_ate: string | null; pontos_fidelidade: number }[] };
       entrar_fila_espera: {
         Args: { p_barbeiro_id: number; p_servico_id: number; p_data: string; p_periodo?: "manha" | "tarde" | "noite" | "qualquer" };
         Returns: Database["public"]["Tables"]["fila_espera"]["Row"];
       };
       cancelar_fila_espera: { Args: { p_fila_id: number }; Returns: undefined };
-      listar_fila_profissional: { Args: Record<string, never>; Returns: ProfessionalWaitlistEntry[] };
+      listar_fila_profissional: { Args: { p_barbeiro_id: number }; Returns: ProfessionalWaitlistEntry[] };
       informar_pagamento_sinal: { Args: { p_agendamento_id: number }; Returns: undefined };
       atualizar_sinal_agendamento: { Args: { p_agendamento_id: number; p_status: "pendente" | "informado" | "pago" | "dispensado" }; Returns: undefined };
       atualizar_preferencias_comunicacao: {
@@ -218,6 +239,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: PublicLegalInformation | null;
       };
+      obter_informacoes_legais_barbearia: {
+        Args: { p_slug: string };
+        Returns: PublicLegalInformation | null;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -229,13 +254,14 @@ export type Barber = Database["public"]["Tables"]["barbeiros"]["Row"];
 export type Service = Database["public"]["Tables"]["servicos"]["Row"];
 export type Appointment = Database["public"]["Tables"]["agendamentos"]["Row"];
 export type BusinessSettings = Database["public"]["Tables"]["configuracoes_negocio"]["Row"];
+export type Barbershop = Database["public"]["Tables"]["barbearias"]["Row"];
 export type BusinessHoliday = Database["public"]["Tables"]["feriados_negocio"]["Row"];
 export type ScheduleBlock = Database["public"]["Tables"]["bloqueios_agenda"]["Row"];
 export type WaitlistEntry = Database["public"]["Tables"]["fila_espera"]["Row"];
 export type Notification = Database["public"]["Tables"]["notificacoes"]["Row"];
 export type PushSubscriptionRow = Database["public"]["Tables"]["push_subscriptions"]["Row"];
 
-export type PublicBusiness = Pick<BusinessSettings, "nome" | "endereco" | "telefone" | "logo_url" | "slug" | "agendamento_publico" | "cancelamento_horas" | "sinal_percentual" | "pix_chave" | "pix_beneficiario">;
+export type PublicBusiness = Pick<Barbershop, "id" | "nome" | "endereco" | "telefone" | "logo_url" | "slug" | "agendamento_publico" | "cancelamento_horas" | "sinal_percentual" | "pix_chave" | "pix_beneficiario">;
 export type PublicHoliday = Pick<BusinessHoliday, "data" | "descricao">;
 export type PublicCatalog = { negocio: PublicBusiness | null; barbeiros: PublicBarber[]; servicos: Service[]; feriados: PublicHoliday[] };
 export type ProfessionalWaitlistEntry = { id: number; data: string; periodo: string; status: string; cliente_nome: string; cliente_telefone: string; servico_nome: string; created_at: string };
