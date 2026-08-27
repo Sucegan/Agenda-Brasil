@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('login and public booking entry points fit the viewport', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Agenda Brasil' })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Agendar sem senha/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Escolher estabelecimento|Agendar sem senha/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Reenviar confirmação/i })).toBeVisible();
   const viewport = page.viewportSize();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -30,7 +30,7 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
           confirmation_sent_at: now,
           app_metadata: { provider: 'email', providers: ['email'] },
           user_metadata: {},
-          identities: [],
+          identities: [{ identity_id: '00000000-0000-4000-8000-000000000124', provider: 'email' }],
           created_at: now,
           updated_at: now,
         },
@@ -58,7 +58,47 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
   await expect(page.locator('form')).toHaveCount(0);
 
   await page.getByRole('button', { name: /Reenviar e-mail de confirmação/i }).click();
-  await expect(page.locator('section[role="status"]').getByText(/Nova solicitação enviada/i)).toBeVisible();
+  await expect(page.locator('section[role="status"]').getByText(/Solicitação recebida|Nova solicitação enviada/i)).toBeVisible();
+});
+
+test('owner pricing and signup path are responsive and keep the owner role', async ({ page }) => {
+  let signupType = '';
+  await page.route('**/auth/v1/signup**', async (route) => {
+    const body = route.request().postDataJSON() as { data?: { tipo?: string } };
+    signupType = body.data?.tipo ?? '';
+    const now = new Date().toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: {
+          id: '00000000-0000-4000-8000-000000000456', aud: 'authenticated', role: 'authenticated',
+          email: 'dono.teste@example.com', phone: '', confirmation_sent_at: now,
+          app_metadata: { provider: 'email', providers: ['email'] }, user_metadata: {}, identities: [{ identity_id: '00000000-0000-4000-8000-000000000457', provider: 'email' }],
+          created_at: now, updated_at: now,
+        },
+        session: null,
+      }),
+    });
+  });
+
+  await page.goto('/planos', { waitUntil: 'networkidle' });
+  await expect(page.getByRole('heading', { name: /Sua agenda cheia/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Profissional' })).toBeVisible();
+  const viewport = page.viewportSize();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? 0);
+
+  await page.getByRole('link', { name: /Começar teste grátis/i }).click();
+  await expect(page).toHaveURL(/tipo=proprietario/);
+  await expect(page.getByRole('button', { name: /Tenho um negócio/i })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('input[name="nome"]').fill('Dono Teste');
+  await page.locator('input[name="telefone"]').fill('11999999999');
+  await page.locator('input[name="email"]').fill('dono.teste@example.com');
+  await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: /Criar conta do estabelecimento/i }).click();
+  await expect(page.getByRole('heading', { name: 'Cadastro realizado' })).toBeVisible();
+  expect(signupType).toBe('proprietario');
 });
 
 test('signup blocks invalid profile data before calling Supabase', async ({ page }) => {

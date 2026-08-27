@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Activity, AlertTriangle, Banknote, Building2, CalendarCheck2, ExternalLink,
-  RefreshCw, Search, Settings2, ShieldCheck, Star, Store, UserRoundCheck, Users, WalletCards,
+  RefreshCw, Search, Settings2, ShieldCheck, Star, Store, UserRoundCheck, Users, WalletCards, ReceiptText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformSettings } from '@/components/platform-settings';
 import type {
   AccountType, AdminClientDirectoryEntry, AdminDashboardSummary,
-  AdminUserDirectoryEntry,
+  AdminUserDirectoryEntry, AdminPlatformSubscription,
 } from '@/lib/database.types';
 import { formatCurrency, formatDate } from '@/lib/scheduling';
 import { supabase } from '@/lib/supabase';
 
-type AdminSection = 'visao-geral' | 'unidades' | 'acessos' | 'clientes' | 'financeiro' | 'plataforma';
+type AdminSection = 'visao-geral' | 'unidades' | 'acessos' | 'clientes' | 'financeiro' | 'assinaturas' | 'plataforma';
 
 const sectionLabels: Record<AdminSection, string> = {
   'visao-geral': 'Visão geral',
@@ -22,6 +22,7 @@ const sectionLabels: Record<AdminSection, string> = {
   acessos: 'Acessos',
   clientes: 'Clientes',
   financeiro: 'Financeiro',
+  assinaturas: 'Assinaturas',
   plataforma: 'Plataforma',
 };
 
@@ -77,6 +78,7 @@ export function AdminCommandCenter({
   const [summary, setSummary] = useState<AdminDashboardSummary | null>(null);
   const [users, setUsers] = useState<AdminUserDirectoryEntry[]>([]);
   const [clients, setClients] = useState<AdminClientDirectoryEntry[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminPlatformSubscription[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [userType, setUserType] = useState<AccountType | ''>('');
   const [clientSearch, setClientSearch] = useState('');
@@ -85,6 +87,7 @@ export function AdminCommandCenter({
   const [changingUnitId, setChangingUnitId] = useState<string | null>(null);
   const [changingOwnerUnitId, setChangingOwnerUnitId] = useState<string | null>(null);
   const [changingUserId, setChangingUserId] = useState<string | null>(null);
+  const [changingSubscriptionId, setChangingSubscriptionId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const loadUsers = useCallback(async (search = '', role: AccountType | '' = '') => {
@@ -97,6 +100,12 @@ export function AdminCommandCenter({
     setUsers(data ?? []);
   }, []);
 
+  const loadSubscriptions = useCallback(async () => {
+    const { data, error: subscriptionsError } = await supabase.rpc('admin_listar_assinaturas_plataforma');
+    if (subscriptionsError) throw subscriptionsError;
+    setSubscriptions(data ?? []);
+  }, []);
+
   const loadSummary = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -104,6 +113,7 @@ export function AdminCommandCenter({
       const [{ data, error: summaryError }] = await Promise.all([
         supabase.rpc('obter_resumo_admin'),
         loadUsers(),
+        loadSubscriptions(),
       ]);
       if (summaryError || !data) throw summaryError ?? new Error('Resumo administrativo indisponível.');
       setSummary(data);
@@ -113,7 +123,7 @@ export function AdminCommandCenter({
     } finally {
       setLoading(false);
     }
-  }, [loadUsers]);
+  }, [loadSubscriptions, loadUsers]);
 
   const loadClients = useCallback(async (search = '') => {
     if (!activeBarbershopId) {
@@ -183,6 +193,19 @@ export function AdminCommandCenter({
     if (ownerError) return toast.error(ownerError.message ?? 'Não foi possível atribuir o proprietário.');
     await Promise.all([loadSummary(), loadUsers(), onRefresh()]);
     toast.success('Proprietário vinculado à unidade.');
+  };
+
+  const changeSubscriptionStatus = async (subscription: AdminPlatformSubscription, status: 'trialing' | 'exempt' | 'canceled') => {
+    if (!window.confirm(`Alterar manualmente a assinatura de “${subscription.proprietario_nome}” para ${status === 'trialing' ? 'novo teste de 14 dias' : status === 'exempt' ? 'isenta' : 'cancelada'}?`)) return;
+    setChangingSubscriptionId(subscription.id);
+    const { error: updateError } = await supabase.rpc('admin_atualizar_status_assinatura_plataforma', {
+      p_usuario_id: subscription.usuario_id,
+      p_status: status,
+    });
+    setChangingSubscriptionId(null);
+    if (updateError) return toast.error(updateError.message ?? 'Não foi possível atualizar a assinatura.');
+    await loadSubscriptions();
+    toast.success('Assinatura atualizada e registrada na auditoria.');
   };
 
   const metrics = summary?.metricas;
@@ -288,6 +311,18 @@ export function AdminCommandCenter({
             <div className="mb-4"><h3 className="text-lg font-black text-white">Financeiro consolidado</h3><p className="mt-1 text-sm text-zinc-500">Receita realizada e sinais que ainda exigem conferência.</p></div>
             <div className="grid gap-3 sm:grid-cols-2"><MetricCard label="Receita consolidada" value={formatCurrency(Number(metrics.receita_mes))} helper="serviços concluídos neste mês" icon={WalletCards} /><MetricCard label="Sinais pendentes" value={formatCurrency(Number(metrics.sinais_pendentes))} helper="pagamentos pendentes ou informados" icon={AlertTriangle} tone="amber" /></div>
             <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Unidade</th><th className="px-4 py-3">Receita do mês</th><th className="px-4 py-3">Agendamentos</th><th className="px-4 py-3">Avaliação</th></tr></thead><tbody className="divide-y divide-zinc-800">{summary.unidades.map((unit) => <tr key={unit.id}><td className="px-4 py-3"><span className="flex items-center gap-2 font-bold text-zinc-200"><Store size={14} className="text-violet-300" /> {unit.nome}</span></td><td className="px-4 py-3 font-black text-emerald-300">{formatCurrency(Number(unit.receita_mes))}</td><td className="px-4 py-3 text-zinc-400">{unit.agendamentos}</td><td className="px-4 py-3 text-amber-300">{Number(unit.avaliacao_media).toFixed(1)}</td></tr>)}</tbody></table></div>
+          </div>
+        )}
+
+        {summary && section === 'assinaturas' && (
+          <div>
+            <div className="mb-4"><h3 className="flex items-center gap-2 text-lg font-black text-white"><ReceiptText size={19} className="text-amber-300" /> Assinaturas da plataforma</h3><p className="mt-1 text-sm text-zinc-500">Controle comercial dos proprietários. Assinaturas vinculadas à Stripe devem ser alteradas no ambiente de cobrança para manter a sincronização.</p></div>
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <MetricCard label="Receita mensal ativa" value={formatCurrency(subscriptions.filter((item) => item.status === 'active').reduce((total, item) => total + Number(item.preco_mensal), 0))} helper="MRR confirmado" icon={Banknote} />
+              <MetricCard label="Testes ativos" value={String(subscriptions.filter((item) => item.status === 'trialing').length)} helper="contas em avaliação" icon={CalendarCheck2} tone="amber" />
+              <MetricCard label="Atenção" value={String(subscriptions.filter((item) => ['past_due', 'unpaid', 'incomplete_expired'].includes(item.status)).length)} helper="cobranças com pendência" icon={AlertTriangle} tone="violet" />
+            </div>
+            {subscriptions.length ? <div className="overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Proprietário</th><th className="px-4 py-3">Plano</th><th className="px-4 py-3">Situação</th><th className="px-4 py-3">Ambiente</th><th className="px-4 py-3">Controle</th></tr></thead><tbody className="divide-y divide-zinc-800">{subscriptions.map((item) => <tr key={item.id} className="bg-zinc-950/30"><td className="px-4 py-3"><b className="block text-zinc-100">{item.proprietario_nome}</b><small className="text-zinc-600">{item.proprietario_email} · {item.unidades} unidade(s)</small></td><td className="px-4 py-3"><b className="block text-amber-200">{item.plano_nome}</b><small className="text-zinc-600">{formatCurrency(Number(item.preco_mensal))}/mês</small></td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${['active', 'exempt'].includes(item.status) ? 'bg-emerald-500/15 text-emerald-300' : item.status === 'trialing' ? 'bg-amber-500/15 text-amber-200' : 'bg-red-500/15 text-red-300'}`}>{item.status}</span>{item.trial_ends_at && item.status === 'trialing' && <small className="mt-1 block text-zinc-600">até {new Date(item.trial_ends_at).toLocaleDateString('pt-BR')}</small>}</td><td className="px-4 py-3 text-xs text-zinc-500">{item.stripe_subscription_id ? (item.livemode ? 'Stripe produção' : 'Stripe teste') : 'Controle manual'}</td><td className="px-4 py-3">{item.stripe_subscription_id ? <span className="text-xs text-zinc-600">Gerenciar na Stripe</span> : <div className="flex gap-1"><button type="button" disabled={changingSubscriptionId === item.id} onClick={() => { void changeSubscriptionStatus(item, 'trialing'); }} className="rounded-lg border border-amber-500/25 px-2 py-1.5 text-[10px] font-bold text-amber-200 disabled:opacity-50">Teste</button><button type="button" disabled={changingSubscriptionId === item.id} onClick={() => { void changeSubscriptionStatus(item, 'exempt'); }} className="rounded-lg border border-emerald-500/25 px-2 py-1.5 text-[10px] font-bold text-emerald-200 disabled:opacity-50">Isentar</button><button type="button" disabled={changingSubscriptionId === item.id} onClick={() => { void changeSubscriptionStatus(item, 'canceled'); }} className="rounded-lg border border-red-500/25 px-2 py-1.5 text-[10px] font-bold text-red-200 disabled:opacity-50">Cancelar</button></div>}</td></tr>)}</tbody></table></div> : <EmptyState>Nenhuma assinatura de proprietário foi criada ainda.</EmptyState>}
           </div>
         )}
 

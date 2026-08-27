@@ -9,6 +9,7 @@ export type PaymentMethod = "dinheiro" | "pix" | "debito" | "credito" | "online"
 export type FinancialEntryType = "receita" | "despesa" | "estorno";
 export type FinancialEntryStatus = "pendente" | "pago" | "cancelado";
 export type BrandIcon = "tesoura" | "coroa" | "barba" | "estrela" | "calendario" | "loja";
+export type PlatformSubscriptionStatus = "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused" | "exempt";
 
 export type AdminMetrics = {
   unidades_total: number;
@@ -64,6 +65,21 @@ export type AdminClientDirectoryEntry = {
   pontos_fidelidade: number;
 };
 
+export type AdminPlatformSubscription = {
+  id: string;
+  usuario_id: string;
+  proprietario_nome: string;
+  proprietario_email: string;
+  plano_nome: string;
+  preco_mensal: number;
+  status: PlatformSubscriptionStatus;
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  unidades: number;
+  stripe_subscription_id: string | null;
+  livemode: boolean;
+};
+
 type Relationship = {
   foreignKeyName: string;
   columns: string[];
@@ -85,6 +101,18 @@ export interface Database {
         Row: { id: true; nome_site: string; subtitulo: string; nome_direitos: string; email_suporte: string | null; aviso_global: string | null; modo_manutencao: boolean; taxa_plataforma_percentual: number; updated_at: string; updated_by: string | null };
         Insert: { id?: true; nome_site?: string; subtitulo?: string; nome_direitos?: string; email_suporte?: string | null; aviso_global?: string | null; modo_manutencao?: boolean; taxa_plataforma_percentual?: number; updated_at?: string; updated_by?: string | null };
         Update: { nome_site?: string; subtitulo?: string; nome_direitos?: string; email_suporte?: string | null; aviso_global?: string | null; modo_manutencao?: boolean; taxa_plataforma_percentual?: number; updated_at?: string; updated_by?: string | null };
+        Relationships: [Relationship];
+      };
+      planos_plataforma: {
+        Row: { id: number; slug: string; nome: string; descricao: string; preco_mensal: number; max_profissionais: number; max_unidades: number; recursos: string[]; stripe_price_id: string | null; destaque: boolean; ativo: boolean; ordem: number; created_at: string; updated_at: string };
+        Insert: { id?: never; slug: string; nome: string; descricao: string; preco_mensal: number; max_profissionais: number; max_unidades: number; recursos?: string[]; stripe_price_id?: string | null; destaque?: boolean; ativo?: boolean; ordem?: number; created_at?: string; updated_at?: string };
+        Update: { slug?: string; nome?: string; descricao?: string; preco_mensal?: number; max_profissionais?: number; max_unidades?: number; recursos?: string[]; stripe_price_id?: string | null; destaque?: boolean; ativo?: boolean; ordem?: number; updated_at?: string };
+        Relationships: [];
+      };
+      assinaturas_plataforma: {
+        Row: { id: string; usuario_id: string; plano_id: number; status: PlatformSubscriptionStatus; trial_ends_at: string | null; current_period_start: string | null; current_period_end: string | null; cancel_at_period_end: boolean; stripe_customer_id: string | null; stripe_subscription_id: string | null; stripe_checkout_session_id: string | null; livemode: boolean; created_at: string; updated_at: string };
+        Insert: { id?: string; usuario_id: string; plano_id: number; status?: PlatformSubscriptionStatus; trial_ends_at?: string | null; current_period_start?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean; stripe_customer_id?: string | null; stripe_subscription_id?: string | null; stripe_checkout_session_id?: string | null; livemode?: boolean; created_at?: string; updated_at?: string };
+        Update: { plano_id?: number; status?: PlatformSubscriptionStatus; trial_ends_at?: string | null; current_period_start?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean; stripe_customer_id?: string | null; stripe_subscription_id?: string | null; stripe_checkout_session_id?: string | null; livemode?: boolean; updated_at?: string };
         Relationships: [Relationship];
       };
       terminais_pagamento: {
@@ -334,6 +362,11 @@ export interface Database {
       obter_configuracao_publica: { Args: Record<string, never>; Returns: PlatformPublicSettings };
       listar_estabelecimentos_publicos: { Args: Record<string, never>; Returns: PublicEstablishment[] };
       listar_planos_publicos: { Args: { p_slug: string }; Returns: PublicMonthlyPlan[] };
+      listar_planos_plataforma_publicos: { Args: Record<string, never>; Returns: PlatformPlanPublic[] };
+      obter_minha_assinatura_plataforma: { Args: Record<string, never>; Returns: PlatformSubscriptionSummary[] };
+      criar_minha_barbearia: { Args: { p_nome: string; p_slug: string; p_publicar?: boolean }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      admin_listar_assinaturas_plataforma: { Args: Record<string, never>; Returns: AdminPlatformSubscription[] };
+      admin_atualizar_status_assinatura_plataforma: { Args: { p_usuario_id: string; p_status: "trialing" | "exempt" | "canceled" }; Returns: Database["public"]["Tables"]["assinaturas_plataforma"]["Row"] };
       admin_atualizar_tipo_usuario: { Args: { p_usuario_id: string; p_tipo: AccountType }; Returns: Database["public"]["Tables"]["usuarios"]["Row"] };
       admin_atribuir_proprietario_barbearia: { Args: { p_barbearia_id: string; p_proprietario_id: string }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
       registrar_movimentacao_financeira: {
@@ -391,6 +424,8 @@ export type PushSubscriptionRow = Database["public"]["Tables"]["push_subscriptio
 export type PaymentTerminal = Database["public"]["Tables"]["terminais_pagamento"]["Row"];
 export type MonthlyPlan = Database["public"]["Tables"]["planos_mensais"]["Row"];
 export type ClientSubscription = Database["public"]["Tables"]["assinaturas_clientes"]["Row"];
+export type PlatformPlan = Database["public"]["Tables"]["planos_plataforma"]["Row"];
+export type PlatformSubscription = Database["public"]["Tables"]["assinaturas_plataforma"]["Row"];
 export type FinancialEntry = Database["public"]["Tables"]["movimentacoes_financeiras"]["Row"];
 export type PaymentCheckout = Database["public"]["Tables"]["checkouts_pagamento"]["Row"];
 
@@ -402,4 +437,6 @@ export type PublicLegalInformation = Pick<BusinessSettings, "nome" | "responsave
 export type PlatformPublicSettings = { nome_site: string; subtitulo: string; nome_direitos: string; email_suporte: string | null; aviso_global: string | null; modo_manutencao: boolean };
 export type PublicEstablishment = Pick<Barbershop, "id" | "nome" | "slug" | "endereco" | "telefone" | "logo_url" | "cor_primaria" | "cor_secundaria" | "icone"> & { profissionais: number; avaliacao_media: number };
 export type PublicMonthlyPlan = Pick<MonthlyPlan, "id" | "nome" | "descricao" | "preco" | "atendimentos_inclusos" | "desconto_excedente">;
+export type PlatformPlanPublic = Pick<PlatformPlan, "id" | "slug" | "nome" | "descricao" | "preco_mensal" | "max_profissionais" | "max_unidades" | "recursos" | "destaque">;
+export type PlatformSubscriptionSummary = Pick<PlatformSubscription, "id" | "usuario_id" | "plano_id" | "status" | "trial_ends_at" | "current_period_end" | "cancel_at_period_end" | "stripe_customer_id" | "stripe_subscription_id" | "livemode"> & Pick<PlatformPlan, "max_profissionais" | "max_unidades"> & { plano_slug: string; plano_nome: string; preco_mensal: number };
 export type FinancialSummary = { receitas: number; despesas: number; estornos: number; taxas: number; saldo: number; pendentes: number; movimentacoes: number };

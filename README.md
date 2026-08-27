@@ -1,6 +1,14 @@
 # Agenda Brasil
 
-Aplicação web responsiva de agendamento para barbearias, construída com Next.js 15, Supabase e Tailwind CSS. Inclui agenda de clientes e profissionais, link público sem senha, fila de espera, sinal por Pix, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
+Aplicação web responsiva de agendamento para barbearias e estabelecimentos, construída com Next.js 15, Supabase, Stripe e Tailwind CSS. Inclui cadastro comercial em autosserviço, agenda de clientes e profissionais, link público sem senha, fila de espera, pagamentos, assinaturas, lembretes automáticos, relatórios, exportação, telemetria e controles de privacidade.
+
+## Modelo comercial
+
+- O proprietário cria a conta, confirma o e-mail e publica a primeira unidade em um onboarding guiado.
+- Toda conta comercial recebe 14 dias grátis sem cartão no plano Profissional.
+- Os planos da Sucegan Tech ficam em `planos_plataforma` e as cobranças em `assinaturas_plataforma`.
+- Os planos que uma barbearia vende aos próprios clientes continuam separados em `planos_mensais` e `assinaturas_clientes`.
+- O painel global do administrador acompanha MRR, testes, pendências e pode isentar ou reiniciar manualmente uma assinatura ainda não vinculada à Stripe.
 
 ## Hospedagem
 
@@ -42,6 +50,13 @@ A rota `/api/cron/notifications` processa a tabela `notificacoes`. Na Vercel, `v
 - WhatsApp: configure Meta WhatsApp Cloud API, `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`. Para mensagens iniciadas pelo negócio, cadastre um template aprovado e informe `WHATSAPP_TEMPLATE_NAME`.
 
 Sem essas credenciais a agenda continua funcionando; os itens permanecem registrados para diagnóstico e não são enviados.
+
+## Assinaturas e pagamentos
+
+- `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` e `STRIPE_WEBHOOK_SECRET` são obrigatórias para cobrar.
+- O endpoint `/api/payments/webhook` deve receber `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`.
+- Use chaves de teste durante o piloto. Antes de cobrar clientes reais, ative a conta Stripe, troque todas as chaves por produção e refaça o webhook no modo live.
+- Configure o Customer Portal da Stripe para permitir atualização de cartão, faturas e cancelamento pelo proprietário.
 
 ## Segurança e produção
 

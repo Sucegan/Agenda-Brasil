@@ -19,6 +19,7 @@ import { NotificationInbox } from '@/components/notification-inbox';
 import { ReviewLoyalty } from '@/components/review-loyalty';
 import { SiteRights } from '@/components/site-rights';
 import { OnlinePaymentButton } from '@/components/online-payment-button';
+import { PlatformSubscription } from '@/components/platform-subscription';
 import { ClientWaitlist, JoinWaitlistButton, ProfessionalWaitlist } from '@/components/waitlist-sections';
 import {
   appointmentStatusLabels, brazilDateISO, displayTime, formatCurrency,
@@ -192,6 +193,7 @@ export default function DashboardPage() {
   const [bloqueios, setBloqueios] = useState<ScheduleBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [precisaOnboarding, setPrecisaOnboarding] = useState(false);
 
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [nomePerfil, setNomePerfil] = useState('');
@@ -281,7 +283,21 @@ export default function DashboardPage() {
       return;
     }
     const { data: businesses, error: businessesError } = await supabase.rpc('listar_minhas_barbearias');
-    if (businessesError || !businesses?.length) throw businessesError ?? new Error('Nenhuma barbearia vinculada à sua conta.');
+    if (businessesError) throw businessesError;
+    if (!businesses?.length && perfil.tipo === 'proprietario') {
+      setPrecisaOnboarding(true);
+      setBarbearias([]);
+      setBarbeariaAtivaId(null);
+      setNegocio(null);
+      setBarbeiro(null);
+      setBarbeiros([]);
+      setServicos([]);
+      setAgendamentos([]);
+      setBloqueios([]);
+      return;
+    }
+    if (!businesses?.length) throw new Error('Nenhuma barbearia vinculada à sua conta.');
+    setPrecisaOnboarding(false);
     setBarbearias(businesses);
     const requestedBusinessId = forcedBusinessId ?? barbeariaAtivaId;
     const selectedBusinessId = businesses.some((item) => item.id === requestedBusinessId) ? requestedBusinessId! : businesses[0].id;
@@ -651,7 +667,8 @@ export default function DashboardPage() {
     if (nome.length < 2 || slug.length < 3) return toast.error('Informe nome e identificador válidos.');
     const toastId = toast.loading('Criando barbearia...');
     setSalvandoNovaBarbearia(true);
-    const { data, error } = await supabase.rpc('criar_barbearia', {
+    const creationRpc = usuario?.tipo === 'proprietario' ? 'criar_minha_barbearia' : 'criar_barbearia';
+    const { data, error } = await supabase.rpc(creationRpc, {
       p_nome: nome,
       p_slug: slug,
       p_publicar: novaBarbeariaPublica,
@@ -664,6 +681,7 @@ export default function DashboardPage() {
     setNovaBarbeariaSlug('');
     setNovaBarbeariaPublica(true);
     setCriandoBarbearia(false);
+    setPrecisaOnboarding(false);
     setBarbeiroGerenciadoId(null);
     setBarbeariaAtivaId(data.id);
     try {
@@ -717,6 +735,42 @@ export default function DashboardPage() {
   const professionalAppointmentRole = isManager ? 'admin' as const : 'barbeiro' as const;
   const brandStyle = negocio ? businessBrandStyle(negocio.cor_primaria, negocio.cor_secundaria) : undefined;
 
+  if (isOwner && precisaOnboarding) {
+    return (
+      <main className="app-screen safe-page-bottom bg-zinc-950 text-zinc-100">
+        <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
+        <header className="safe-header border-b border-zinc-800/80 bg-zinc-950 px-4 pb-4 sm:px-6">
+          <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
+            <div><h1 className="text-xl font-black text-emerald-400 sm:text-2xl">Agenda Brasil</h1><p className="mt-1 text-xs text-zinc-500">Bem-vindo, {usuario.nome}</p></div>
+            <button onClick={() => { void sair(); }} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-xs font-bold text-zinc-300"><LogOut size={16} /> Sair</button>
+          </div>
+        </header>
+        <section className="mx-auto grid max-w-4xl gap-6 p-4 py-10 sm:p-6 sm:py-14 lg:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-300">14 dias grátis · sem cartão</span>
+            <h2 className="mt-5 text-3xl font-black leading-tight text-white sm:text-4xl">Vamos publicar seu estabelecimento.</h2>
+            <p className="mt-4 text-sm leading-7 text-zinc-400">Criaremos sua unidade, seu perfil profissional e um link público para receber agendamentos. Depois você poderá personalizar cores, serviços, equipe, horários e pagamentos.</p>
+            <div className="mt-6 space-y-3 text-sm text-zinc-300">
+              <p className="flex items-center gap-2"><ShieldCheck className="text-emerald-400" size={17} /> Você será proprietário somente das suas unidades.</p>
+              <p className="flex items-center gap-2"><CalendarCheck2 className="text-emerald-400" size={17} /> A duração dos serviços bloqueará o intervalo completo.</p>
+              <p className="flex items-center gap-2"><Wallet className="text-emerald-400" size={17} /> Pagamentos e financeiro ficam separados por unidade.</p>
+            </div>
+          </div>
+          <form onSubmit={criarNovaBarbearia} className="rounded-3xl border border-emerald-500/25 bg-zinc-900/80 p-5 shadow-2xl sm:p-7">
+            <div className="mb-5 flex items-center gap-3"><span className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300"><Building2 size={22} /></span><div><h3 className="text-xl font-black">Primeira unidade</h3><p className="text-xs text-zinc-500">Você poderá revisar tudo antes de divulgar o link.</p></div></div>
+            <div className="space-y-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">Nome do estabelecimento<input autoFocus value={novaBarbeariaNome} onChange={(event) => { const value = event.target.value; setNovaBarbeariaNome(value); setNovaBarbeariaSlug(value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')); }} placeholder="Ex.: Barbearia Central" required minLength={2} maxLength={120} className="mt-1.5 w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-white outline-none focus:border-emerald-500" /></label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">Link público<div className="mt-1.5 flex overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 focus-within:border-emerald-500"><span className="hidden items-center border-r border-zinc-800 px-3 text-xs text-zinc-600 sm:flex">/agendar?estabelecimento=</span><input value={novaBarbeariaSlug} onChange={(event) => setNovaBarbeariaSlug(event.target.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))} placeholder="barbearia-central" required minLength={3} maxLength={80} className="min-w-0 flex-1 bg-transparent p-3.5 text-white outline-none" /></div></label>
+              <label className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm"><input type="checkbox" checked={novaBarbeariaPublica} onChange={(event) => setNovaBarbeariaPublica(event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-500" /><span><strong className="block text-emerald-200">Aparecer na busca de estabelecimentos</strong><span className="mt-1 block text-xs leading-5 text-zinc-400">Recomendado para receber clientes. Você pode desativar depois.</span></span></label>
+              <button disabled={salvandoNovaBarbearia} className="primary-button w-full py-3.5 disabled:opacity-50">{salvandoNovaBarbearia ? 'Criando estrutura segura...' : 'Criar e abrir meu painel'}</button>
+            </div>
+          </form>
+        </section>
+        <SiteRights className="mx-auto max-w-4xl border-t border-zinc-900 px-4 py-6" />
+      </main>
+    );
+  }
+
   return (
     <main className="app-screen app-shell safe-page-bottom text-zinc-100" style={brandStyle}>
       <Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />
@@ -765,6 +819,7 @@ export default function DashboardPage() {
             onRefresh={() => carregarDados()}
           />
         )}
+        {isOwner && <PlatformSubscription />}
         {usuario?.tipo === 'cliente' && barbeariasPublicas.length > 1 && (
           <section className="rounded-2xl border border-emerald-500/20 bg-zinc-900/70 p-4 shadow-xl">
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Escolha a barbearia
@@ -787,7 +842,7 @@ export default function DashboardPage() {
                   {barbeiros.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
                 </select>
               </label>}
-              {isAdmin && <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>}
+              {isManager && <button onClick={() => setCriandoBarbearia((value) => !value)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><Plus className="mr-1 inline" size={16} /> Nova barbearia</button>}
             </div>
             {criandoBarbearia && (
               <form onSubmit={criarNovaBarbearia} className="mt-4 grid gap-3 border-t border-zinc-800 pt-4 sm:grid-cols-2">

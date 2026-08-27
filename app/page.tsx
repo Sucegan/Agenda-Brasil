@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { SiteRights } from '@/components/site-rights';
 import { useEffect, useSyncExternalStore, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
-import { CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
+import { Building2, CalendarDays, Mail, MailCheck, Lock, User, Phone, Eye, EyeOff, Scissors, Sparkles, RefreshCw } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
 import { signupErrorMessage, signupLooksLikeExistingAccount, validateSignupFields } from '@/lib/signup-validation';
 import type { PlatformPublicSettings } from '@/lib/database.types';
@@ -21,15 +21,17 @@ function useInviteParams() {
   const params = new URLSearchParams(search);
   return {
     isConviteBarbeiro: params.get('tipo') === 'barbeiro',
+    isCadastroProprietario: params.get('tipo') === 'proprietario',
     conviteBarbeiro: params.get('convite'),
     sessaoExpirada: params.get('motivo') === 'sessao-expirada',
   };
 }
 
 function LoginForm() {
-  const { isConviteBarbeiro, conviteBarbeiro, sessaoExpirada } = useInviteParams();
+  const { isConviteBarbeiro, isCadastroProprietario, conviteBarbeiro, sessaoExpirada } = useInviteParams();
   const [preferirLogin, setPreferirLogin] = useState(true);
   const isLogin = !isConviteBarbeiro && preferirLogin;
+  const [signupAccountType, setSignupAccountType] = useState<'cliente' | 'proprietario'>('cliente');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [nome, setNome] = useState('');
@@ -52,6 +54,12 @@ function LoginForm() {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!isCadastroProprietario) return;
+    setSignupAccountType('proprietario');
+    setPreferirLogin(false);
+  }, [isCadastroProprietario]);
 
   const handleTelefoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, ''); 
@@ -107,7 +115,7 @@ function LoginForm() {
               telefone: normalized.phone,
               full_name: normalized.name,
               display_name: normalized.name,
-              tipo: isConviteBarbeiro ? 'barbeiro' : 'cliente',
+              tipo: isConviteBarbeiro ? 'barbeiro' : signupAccountType,
               convite_barbeiro: conviteBarbeiro,
               termos_aceitos: true,
             } 
@@ -220,7 +228,11 @@ function LoginForm() {
           </p>
         ) : (
           <p className="text-zinc-400 mt-2 text-sm font-medium">
-            {isLogin ? platform?.subtitulo ?? 'Acesse sua conta para continuar' : 'Crie sua conta para agendar'}
+            {isLogin
+              ? platform?.subtitulo ?? 'Acesse sua conta para continuar'
+              : signupAccountType === 'proprietario'
+                ? 'Crie sua conta e publique seu estabelecimento'
+                : 'Crie sua conta para agendar'}
           </p>
         )}
       </div>
@@ -263,6 +275,19 @@ function LoginForm() {
       
       {!confirmationEmail && <form onSubmit={handleSubmit} className="space-y-4">
         <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Site<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label>
+        {!isLogin && !isConviteBarbeiro && (
+          <fieldset>
+            <legend className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-400">Como você quer usar?</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setSignupAccountType('cliente')} aria-pressed={signupAccountType === 'cliente'} className={`rounded-xl border p-3 text-left transition-colors ${signupAccountType === 'cliente' ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200' : 'border-zinc-800 bg-zinc-950/50 text-zinc-400 hover:border-zinc-700'}`}>
+                <CalendarDays size={18} /><strong className="mt-2 block text-sm">Quero agendar</strong><span className="mt-1 block text-[10px] leading-4">Conta gratuita de cliente</span>
+              </button>
+              <button type="button" onClick={() => setSignupAccountType('proprietario')} aria-pressed={signupAccountType === 'proprietario'} className={`rounded-xl border p-3 text-left transition-colors ${signupAccountType === 'proprietario' ? 'border-amber-400 bg-amber-500/15 text-amber-100' : 'border-zinc-800 bg-zinc-950/50 text-zinc-400 hover:border-zinc-700'}`}>
+                <Building2 size={18} /><strong className="mt-2 block text-sm">Tenho um negócio</strong><span className="mt-1 block text-[10px] leading-4">14 dias grátis, sem cartão</span>
+              </button>
+            </div>
+          </fieldset>
+        )}
         {!isLogin && (
           <div className="signup-fields space-y-4">
             <div className="relative">
@@ -309,7 +334,7 @@ function LoginForm() {
         </div>
 
         <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20">
-          {loading ? 'Aguarde...' : isLogin ? 'Entrar' : 'Cadastrar'}
+          {loading ? 'Aguarde...' : isLogin ? 'Entrar' : signupAccountType === 'proprietario' ? 'Criar conta do estabelecimento' : 'Cadastrar'}
         </button>
 
         {isLogin && (
@@ -323,6 +348,7 @@ function LoginForm() {
       {!confirmationEmail && !isConviteBarbeiro && (
         <div className="mt-6 space-y-3 text-center">
           <Link href="/estabelecimentos" className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300 hover:bg-emerald-500/20"><CalendarDays size={17} /> Escolher estabelecimento e agendar</Link>
+          <Link href="/planos" className="block text-xs font-bold text-amber-300 hover:text-amber-200">Conhecer planos para estabelecimentos</Link>
           <button onClick={() => { setPreferirLogin(!isLogin); setEmail(''); setSenha(''); setNome(''); setTelefone(''); setConfirmationNotice(''); setLoginNotice(''); }} className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
             {isLogin ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
             <span className="text-emerald-400 font-bold hover:underline">{isLogin ? 'Cadastre-se' : 'Faça Login'}</span>
