@@ -5,6 +5,7 @@ import { WebVitals } from "@/components/web-vitals";
 import { NetworkStatus } from "@/components/network-status";
 import { PlatformNotice } from "@/components/platform-notice";
 import { COPYRIGHT_NOTICE, RIGHTS_HOLDER } from "@/components/site-rights";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://agenda-brasil.vercel.app"),
@@ -61,6 +62,7 @@ export default function RootLayout({
         <NetworkStatus />
         <PlatformNotice />
         {children}
+        <Analytics />
       </body>
     </html>
   );
