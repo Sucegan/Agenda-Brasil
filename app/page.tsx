@@ -333,7 +333,7 @@ function LoginForm() {
           </div>
         </div>
 
-        <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20">
+        <button type="submit" disabled={loading} className="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-emerald-900/20">
           {loading ? 'Aguarde...' : isLogin ? 'Entrar' : signupAccountType === 'proprietario' ? 'Criar conta do estabelecimento' : 'Cadastrar'}
         </button>
 
