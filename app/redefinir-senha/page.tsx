@@ -40,7 +40,7 @@ export default function ResetPasswordPage() {
 
   const salvarNovaSenha = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (senha.length < 6) return toast.error('A nova senha deve ter ao menos 6 caracteres.');
+    if (senha.length < 8) return toast.error('A nova senha deve ter ao menos 8 caracteres.');
     if (senha !== confirmacao) return toast.error('As senhas não conferem.');
 
     const toastId = toast.loading('Atualizando senha...');

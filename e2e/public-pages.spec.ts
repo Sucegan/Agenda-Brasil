@@ -5,11 +5,14 @@ test('login and public booking entry points fit the viewport', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Agenda Brasil' })).toBeVisible();
   await expect(page.getByRole('link', { name: /Escolher estabelecimento|Agendar sem senha/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Reenviar confirmação/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Sou cliente/i })).toHaveAttribute('href', '/cadastro/cliente');
+  await expect(page.getByRole('link', { name: /Tenho um negócio/i })).toHaveAttribute('href', '/cadastro/estabelecimento');
   const viewport = page.viewportSize();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(viewport?.width ?? width);
 
-  await page.getByRole('button', { name: /Cadastre-se/i }).click();
+  await page.getByRole('link', { name: /Sou cliente/i }).click();
+  await expect(page).toHaveURL(/\/cadastro\/cliente$/);
   await expect(page.getByText(/Aceito os termos/i)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? width);
 });
@@ -42,14 +45,14 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: /Cadastre-se/i }).click();
+  await page.goto('/cadastro/cliente', { waitUntil: 'domcontentloaded' });
   await page.locator('input[name="nome"]').fill('Cliente Teste');
   await page.locator('input[name="telefone"]').fill('11999999999');
   await page.locator('input[name="email"]').fill('cliente.teste@example.com');
   await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
   await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Cadastrar', exact: true }).click();
+  await page.getByRole('button', { name: 'Criar conta de cliente', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Cadastro realizado' })).toBeVisible();
   await expect(page.getByText('cliente.teste@example.com', { exact: true })).toBeVisible();
@@ -89,12 +92,13 @@ test('owner pricing and signup path are responsive and keep the owner role', asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? 0);
 
   await page.getByRole('link', { name: /Começar teste grátis/i }).click();
-  await expect(page).toHaveURL(/tipo=proprietario/);
-  await expect(page.getByRole('button', { name: /Tenho um negócio/i })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/\/cadastro\/estabelecimento$/);
+  await expect(page.getByRole('heading', { name: /Comece seu teste grátis/i })).toBeVisible();
   await page.locator('input[name="nome"]').fill('Dono Teste');
   await page.locator('input[name="telefone"]').fill('11999999999');
   await page.locator('input[name="email"]').fill('dono.teste@example.com');
   await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: /Criar conta do estabelecimento/i }).click();
   await expect(page.getByRole('heading', { name: 'Cadastro realizado' })).toBeVisible();
@@ -108,17 +112,32 @@ test('signup blocks invalid profile data before calling Supabase', async ({ page
     await route.abort();
   });
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: /Cadastre-se/i }).click();
+  await page.goto('/cadastro/cliente', { waitUntil: 'domcontentloaded' });
   await page.locator('input[name="nome"]').fill('s');
   await page.locator('input[name="telefone"]').fill('18996582256');
   await page.locator('input[name="email"]').fill('cliente.teste@example.com');
   await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
   await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Cadastrar', exact: true }).click();
+  await page.getByRole('button', { name: 'Criar conta de cliente', exact: true }).click();
 
   expect(await page.locator('input[name="nome"]').evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   expect(signupRequests).toBe(0);
+});
+
+test('professional registration is isolated and requires a private invitation', async ({ page }) => {
+  await page.goto('/cadastro/profissional?convite=convite-teste', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Convite para profissional' })).toBeVisible();
+  await expect(page.getByText(/Acesso restrito por convite/i)).toBeVisible();
+  await expect(page.getByText(/Como você quer usar/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Aceitar convite e criar conta/i })).toBeVisible();
+});
+
+test('legacy signup links redirect to the separated registration areas', async ({ page }) => {
+  await page.goto('/?tipo=proprietario', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/cadastro\/estabelecimento$/);
+  await page.goto('/?tipo=barbeiro&convite=convite-antigo', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/cadastro\/profissional\?convite=convite-antigo$/);
 });
 
 test('web version does not expose install or update app surfaces', async ({ page, request }) => {
