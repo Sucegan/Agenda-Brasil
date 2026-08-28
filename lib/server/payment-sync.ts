@@ -6,9 +6,28 @@ import type { createAdminClient } from '@/lib/server/supabase-admin';
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 type CheckoutRow = Database['public']['Tables']['checkouts_pagamento']['Row'];
+type ClientSubscriptionStatus = Database['public']['Tables']['assinaturas_clientes']['Row']['status'];
 
 function stripeId(value: string | { id: string } | null) {
   return typeof value === 'string' ? value : value?.id ?? null;
+}
+
+function clientSubscriptionStatus(status: Stripe.Subscription.Status): ClientSubscriptionStatus {
+  if (status === 'active' || status === 'trialing') return 'ativa';
+  if (status === 'paused') return 'pausada';
+  if (status === 'canceled') return 'cancelada';
+  if (status === 'incomplete') return 'pendente';
+  return 'inadimplente';
+}
+
+export async function syncClientSubscription(admin: AdminClient, subscription: Stripe.Subscription) {
+  const periodEnd = subscription.items.data[0]?.current_period_end;
+  const { error } = await admin.from('assinaturas_clientes').update({
+    status: clientSubscriptionStatus(subscription.status),
+    proxima_cobranca_em: periodEnd ? new Date(periodEnd * 1_000).toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }).eq('referencia_externa', subscription.id);
+  if (error) throw error;
 }
 
 export async function markCheckoutExpired(admin: AdminClient, sessionId: string) {

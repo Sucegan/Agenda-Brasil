@@ -7,6 +7,14 @@ test('login and public booking entry points fit the viewport', async ({ page }) 
   await expect(page.getByRole('button', { name: /Reenviar confirmação/i })).toBeVisible();
   await expect(page.getByRole('link', { name: /Sou cliente/i })).toHaveAttribute('href', '/cadastro/cliente');
   await expect(page.getByRole('link', { name: /Tenho um negócio/i })).toHaveAttribute('href', '/cadastro/estabelecimento');
+  const emailLabel = page.locator('label[for="login-email"]');
+  const emailInput = page.locator('#login-email');
+  const submitButton = page.getByRole('button', { name: 'Entrar', exact: true });
+  await expect(emailLabel).toHaveCSS('display', 'block');
+  await expect(emailInput).toHaveCSS('width', /\d+px/);
+  await expect(submitButton).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const [labelBox, inputBox] = await Promise.all([emailLabel.boundingBox(), emailInput.boundingBox()]);
+  expect(labelBox && inputBox && labelBox.y + labelBox.height <= inputBox.y).toBeTruthy();
   const viewport = page.viewportSize();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(viewport?.width ?? width);
@@ -62,6 +70,7 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
 
   await page.getByRole('button', { name: /Reenviar e-mail de confirmação/i }).click();
   await expect(page.locator('section[role="status"]').getByText(/Solicitação recebida|Nova solicitação enviada/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Reenviar em \d+s/i })).toBeDisabled();
 });
 
 test('owner pricing and signup path are responsive and keep the owner role', async ({ page }) => {
@@ -119,7 +128,9 @@ test('signup blocks invalid profile data before calling Supabase', async ({ page
   await page.locator('input[name="senha"]').fill('senha-segura');
   await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
   await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Criar conta de cliente', exact: true }).click();
+  // requestSubmit exercises the browser's native constraint validation
+  // without depending on the simulated iOS keyboard settling after fill().
+  await page.locator('form').evaluate((form: HTMLFormElement) => form.requestSubmit());
 
   expect(await page.locator('input[name="nome"]').evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   expect(signupRequests).toBe(0);

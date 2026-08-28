@@ -54,11 +54,11 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
   const [showPassword, setShowPassword] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
-  const [website, setWebsite] = useState('');
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [confirmationNotice, setConfirmationNotice] = useState('');
   const [loginNotice, setLoginNotice] = useState('');
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [platform, setPlatform] = useState<PlatformPublicSettings | null>(null);
 
   useEffect(() => {
@@ -74,6 +74,12 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown((current) => Math.max(0, current - 1)), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   const handlePhoneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     let value = event.target.value.replace(/\D/g, '').slice(0, 11);
@@ -105,7 +111,6 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
         return;
       }
 
-      if (website) throw new Error('Não foi possível concluir o cadastro.');
       const validation = validateSignupFields({ name, phone, email, password });
       if (validation.error || !validation.data) throw new Error(validation.error ?? 'Revise os dados do cadastro.');
       if (password !== passwordConfirmation) throw new Error('As senhas informadas não são iguais.');
@@ -179,7 +184,9 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
   const resendConfirmation = async () => {
     const targetEmail = (confirmationEmail || email).trim().toLowerCase();
     if (!targetEmail) return toast.error('Informe o e-mail da conta.');
-    if (resendingConfirmation) return;
+    if (resendingConfirmation || resendCooldown > 0) {
+      return toast.error(`Aguarde ${resendCooldown || 1}s antes de solicitar novamente.`);
+    }
     setResendingConfirmation(true);
     const toastId = toast.loading('Reenviando confirmação...');
     try {
@@ -202,6 +209,7 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
       toast.error(message, { id: toastId });
     } finally {
       setResendingConfirmation(false);
+      setResendCooldown(60);
     }
   };
 
@@ -224,18 +232,17 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
           <p className="mt-2 text-sm leading-6 text-zinc-300">Solicitamos o envio da confirmação para <strong className="break-all text-emerald-300">{confirmationEmail}</strong>.</p>
           <div className="mt-4 rounded-xl border border-zinc-700/80 bg-zinc-950/50 p-3 text-left text-xs leading-5 text-zinc-400"><p>1. Abra a mensagem da Agenda Brasil e confirme seu e-mail.</p><p>2. Se não aparecer, verifique Spam, Lixo eletrônico e Promoções.</p><p>3. Depois da confirmação, volte e entre com sua senha.</p></div>
           <p className="mt-3 text-xs text-emerald-200">{confirmationNotice}</p>
-          <div className="mt-5 grid gap-2"><button type="button" onClick={() => { void resendConfirmation(); }} disabled={resendingConfirmation} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"><RefreshCw size={16} className={resendingConfirmation ? 'animate-spin' : ''} />{resendingConfirmation ? 'Reenviando...' : 'Reenviar e-mail de confirmação'}</button><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:border-emerald-500/50">Ir para o login</Link></div>
+          <div className="mt-5 grid gap-2"><button type="button" onClick={() => { void resendConfirmation(); }} disabled={resendingConfirmation || resendCooldown > 0} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw size={16} className={resendingConfirmation ? 'animate-spin' : ''} />{resendingConfirmation ? 'Reenviando...' : resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar e-mail de confirmação'}</button><Link href="/" className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:border-emerald-500/50">Ir para o login</Link></div>
         </section>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true">Site<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label>
           <fieldset disabled={!hydrated || loading} className="contents">
           {!isLogin && <><div><label htmlFor={`${mode}-nome`} className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-400">Nome completo</label><div className="relative"><User className="pointer-events-none absolute left-3 top-3.5 text-emerald-500" size={18} /><input id={`${mode}-nome`} name="nome" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: João da Silva" required minLength={2} maxLength={120} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 pl-10 text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500" /></div><p className="mt-1 text-[10px] text-zinc-600">Use pelo menos 2 caracteres.</p></div><div><label htmlFor={`${mode}-telefone`} className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-400">WhatsApp</label><div className="relative"><Phone className="pointer-events-none absolute left-3 top-3.5 text-emerald-500" size={18} /><input id={`${mode}-telefone`} name="telefone" type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={handlePhoneChange} placeholder="(00) 00000-0000" required minLength={14} maxLength={15} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 pl-10 text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500" /></div><p className="mt-1 text-[10px] text-zinc-600">Informe DDD e número do WhatsApp.</p></div></>}
           <div><label htmlFor={`${mode}-email`} className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-400">E-mail</label><div className="relative"><Mail className="pointer-events-none absolute left-3 top-3.5 text-emerald-500" size={18} /><input id={`${mode}-email`} name="email" type="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setLoginNotice(''); }} placeholder="seu@email.com" required maxLength={254} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 pl-10 text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500" /></div></div>
           <div><label htmlFor={`${mode}-senha`} className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-400">Senha</label><div className="relative"><Lock className="pointer-events-none absolute left-3 top-3.5 text-emerald-500" size={18} /><input id={`${mode}-senha`} name="senha" type={showPassword ? 'text' : 'password'} autoComplete={isLogin ? 'current-password' : 'new-password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required minLength={isLogin ? undefined : 8} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 pl-10 pr-11 text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500" /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex items-center px-3 text-emerald-500 hover:text-emerald-300">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{!isLogin && <p className="mt-1 text-[10px] text-zinc-600">Use no mínimo 8 caracteres.</p>}</div>
           {!isLogin && <><div><label htmlFor={`${mode}-confirmar-senha`} className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-400">Confirmar senha</label><div className="relative"><ShieldCheck className="pointer-events-none absolute left-3 top-3.5 text-emerald-500" size={18} /><input id={`${mode}-confirmar-senha`} name="confirmarSenha" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} placeholder="Repita sua senha" required minLength={8} className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 pl-10 text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500" /></div></div><label className="flex items-start gap-2 text-xs leading-5 text-zinc-400"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4" /><span>Aceito os <Link href="/termos" className="text-emerald-400 underline">termos de uso</Link> e a <Link href="/privacidade" className="text-emerald-400 underline">política de privacidade</Link>.</span></label><Captcha onToken={setCaptchaToken} /></>}
           <button type="submit" className="mt-6 flex w-full items-center justify-center rounded-xl bg-emerald-700 py-3.5 font-bold text-white shadow-lg shadow-emerald-950/30 transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">{loading ? 'Aguarde...' : isLogin ? 'Entrar' : signupContent?.submit}</button>
-          {isLogin && <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-medium text-emerald-400"><button type="button" onClick={() => { void requestPasswordReset(); }} className="hover:text-emerald-300">Esqueci minha senha</button><button type="button" onClick={() => { void resendConfirmation(); }} className="hover:text-emerald-300">Reenviar confirmação</button></div>}
+          {isLogin && <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-medium text-emerald-400"><button type="button" onClick={() => { void requestPasswordReset(); }} className="hover:text-emerald-300">Esqueci minha senha</button><button type="button" onClick={() => { void resendConfirmation(); }} disabled={resendingConfirmation || resendCooldown > 0} className="hover:text-emerald-300 disabled:cursor-not-allowed disabled:text-zinc-600">{resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar confirmação'}</button></div>}
           </fieldset>
         </form>
       )}

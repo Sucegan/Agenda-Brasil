@@ -74,6 +74,16 @@ textarea {
   font: inherit;
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
+  box-shadow: 0 0 0 1000px #18181b inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
 button,
 a,
 input,

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(58);
+select plan(60);
 
 select has_table('public', 'fila_espera', 'fila de espera existe');
 select has_table('public', 'notificacoes', 'fila de notificações existe');
@@ -62,6 +62,8 @@ select ok(not has_table_privilege('anon', 'public.terminais_pagamento', 'select'
 select ok(not has_table_privilege('anon', 'public.assinaturas_clientes', 'select'), 'anon não lê assinaturas de clientes');
 select ok(not has_table_privilege('anon', 'public.movimentacoes_financeiras', 'select'), 'anon não lê o caixa');
 select ok(not has_table_privilege('anon', 'public.checkouts_pagamento', 'select'), 'anon não lê checkouts de pagamento');
+select ok(not has_table_privilege('authenticated', 'public.push_subscriptions', 'select'), 'versão web não expõe assinaturas push legadas');
+select ok(not has_table_privilege('authenticated', 'public.configuracoes_negocio', 'update'), 'configuração global legada permanece somente leitura');
 select ok(not has_function_privilege('anon', 'public.admin_atualizar_tipo_usuario(uuid,text)', 'execute'), 'anon não altera perfis');
 select ok(not has_function_privilege('anon', 'public.registrar_movimentacao_financeira(uuid,bigint,text,text,text,numeric,numeric,text,text)', 'execute'), 'anon não registra movimentações');
 

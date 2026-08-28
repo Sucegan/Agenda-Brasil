@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { confirmPaidCheckout, markCheckoutExpired } from '@/lib/server/payment-sync';
+import { confirmPaidCheckout, markCheckoutExpired, syncClientSubscription } from '@/lib/server/payment-sync';
 import { markPlatformCheckoutExpired, syncPlatformCheckout, syncPlatformSubscription } from '@/lib/server/platform-billing';
 import { createAdminClient } from '@/lib/server/supabase-admin';
 import { getStripe } from '@/lib/server/stripe';
@@ -34,13 +34,15 @@ export async function POST(request: Request) {
     if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {
       if (event.data.object.metadata.checkout_type === 'platform_subscription') {
         await syncPlatformSubscription(admin, event.data.object);
+      } else {
+        await syncClientSubscription(admin, event.data.object);
       }
     }
     if (event.type === 'customer.subscription.deleted') {
       if (event.data.object.metadata.checkout_type === 'platform_subscription') {
         await syncPlatformSubscription(admin, event.data.object);
       } else {
-        await admin.from('assinaturas_clientes').update({ status: 'cancelada', updated_at: new Date().toISOString() }).eq('referencia_externa', event.data.object.id);
+        await syncClientSubscription(admin, event.data.object);
       }
     }
   } catch (error) {

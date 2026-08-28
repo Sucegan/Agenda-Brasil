@@ -57,7 +57,19 @@ export async function POST(request: Request) {
       metadata: { checkout_type: type, barbershop_id: business.id, user_id: user.id, appointment_id: appointment?.id?.toString() ?? '', plan_id: plan?.id?.toString() ?? '' },
     };
     const session = type === 'assinatura'
-      ? await stripe.checkout.sessions.create({ ...common, mode: 'subscription', subscription_data: destination ? { transfer_data: { destination }, application_fee_percent: feeRate } : undefined })
+      ? await stripe.checkout.sessions.create({
+          ...common,
+          mode: 'subscription',
+          subscription_data: {
+            metadata: {
+              checkout_type: 'client_subscription',
+              barbershop_id: business.id,
+              user_id: user.id,
+              plan_id: plan?.id?.toString() ?? '',
+            },
+            ...(destination ? { transfer_data: { destination }, application_fee_percent: feeRate } : {}),
+          },
+        })
       : await stripe.checkout.sessions.create({ ...common, mode: 'payment', payment_intent_data: destination ? { transfer_data: { destination }, application_fee_amount: Math.round(amountCents * feeRate / 100) } : undefined });
     if (!session.url) return NextResponse.json({ error: 'A Stripe não retornou a página segura de pagamento.' }, { status: 502 });
 
