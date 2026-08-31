@@ -28,7 +28,7 @@ export default function PlansPage() {
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-emerald-300"><Sparkles size={14} /> 14 dias grátis · sem cartão</span>
           <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-6xl">Sua agenda cheia.<br /><span className="text-emerald-400">Sua gestão no controle.</span></h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-zinc-400 sm:text-lg">Agenda online, equipe, pagamentos, avaliações e financeiro em um único sistema preparado para celular e computador.</p>
-          <Link href="/cadastro/estabelecimento" className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 font-black text-white shadow-xl shadow-emerald-950/40 hover:bg-emerald-500"><BadgeCheck size={19} /> Começar teste grátis</Link>
+          <Link href="/cadastro/estabelecimento" className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-4 font-black text-white shadow-xl shadow-emerald-950/40 hover:bg-emerald-500"><BadgeCheck size={19} /> Solicitar demonstração</Link>
         </header>
 
         <section className="grid gap-5 lg:grid-cols-3" aria-label="Planos da plataforma">
@@ -40,7 +40,7 @@ export default function PlansPage() {
               <p className="mt-5 text-4xl font-black text-white">{money(Number(plan.preco_mensal))}<span className="text-sm font-medium text-zinc-500">/mês</span></p>
               <p className="mt-2 text-xs font-bold text-amber-300">Até {plan.max_profissionais} profissionais · {plan.max_unidades} unidade(s)</p>
               <ul className="my-6 flex-1 space-y-3 text-sm text-zinc-300">{plan.recursos.map((resource) => <li key={resource} className="flex items-start gap-2"><Check className="mt-0.5 shrink-0 text-emerald-400" size={15} /> {resource}</li>)}</ul>
-              <Link href="/cadastro/estabelecimento" className={`flex items-center justify-center rounded-xl px-4 py-3 text-sm font-black ${plan.destaque ? 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400' : 'border border-zinc-700 bg-zinc-950 text-white hover:border-emerald-500/50'}`}>Testar {plan.nome}</Link>
+              <Link href="/cadastro/estabelecimento" className={`flex items-center justify-center rounded-xl px-4 py-3 text-sm font-black ${plan.destaque ? 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400' : 'border border-zinc-700 bg-zinc-950 text-white hover:border-emerald-500/50'}`}>Falar sobre {plan.nome}</Link>
             </article>
           ) : <div key={plan.id} className="h-96 animate-pulse rounded-3xl border border-zinc-800 bg-zinc-900/70" />)}
         </section>

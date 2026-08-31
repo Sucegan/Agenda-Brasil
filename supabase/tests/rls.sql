@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(60);
+select plan(74);
 
 select has_table('public', 'fila_espera', 'fila de espera existe');
 select has_table('public', 'notificacoes', 'fila de notificações existe');
@@ -18,6 +18,9 @@ select has_table('public', 'assinaturas_clientes', 'assinaturas de clientes exis
 select has_table('public', 'movimentacoes_financeiras', 'movimentações financeiras existem');
 select has_table('public', 'checkouts_pagamento', 'checkouts online existem');
 select has_column('public', 'agendamentos', 'pagamento_online_status', 'agendamento registra pagamento online');
+select has_column('public', 'barbeiros', 'funcao', 'profissional distingue proprietário e funcionário');
+select has_column('public', 'barbeiros', 'comissao_percentual', 'profissional possui comissão configurável');
+select has_column('public', 'barbeiros', 'observacoes_gestao', 'gestão possui observações internas');
 
 select ok((select relrowsecurity from pg_class where oid = 'public.fila_espera'::regclass), 'RLS ativo na fila de espera');
 select ok((select relrowsecurity from pg_class where oid = 'public.notificacoes'::regclass), 'RLS ativo nas notificações');
@@ -42,6 +45,11 @@ select has_function('public', 'listar_estabelecimentos_publicos', array[]::text[
 select has_function('public', 'admin_atualizar_tipo_usuario', array['uuid', 'text'], 'gestão administrativa de perfis existe');
 select has_function('public', 'registrar_movimentacao_financeira', array['uuid', 'bigint', 'text', 'text', 'text', 'numeric', 'numeric', 'text', 'text'], 'registro financeiro protegido existe');
 select has_function('public', 'obter_resumo_financeiro', array['uuid', 'date', 'date'], 'resumo financeiro protegido existe');
+select has_function('public', 'listar_equipe_barbearia', array['uuid'], 'listagem de equipe protegida existe');
+select has_function('public', 'atualizar_dados_profissional', array['bigint', 'text', 'text', 'numeric', 'text'], 'gestão de comissão existe');
+select has_function('public', 'definir_proprietario_barbearia', array['uuid', 'bigint'], 'atribuição operacional de proprietário existe');
+select has_function('public', 'definir_feriado_fechado', array['uuid', 'date', 'text'], 'decisão de fechar no feriado existe');
+select has_function('public', 'definir_feriado_aberto', array['uuid', 'date'], 'decisão de abrir no feriado existe');
 
 select hasnt_function('public', 'obter_catalogo_publico', array[]::text[], 'sobrecarga global legada do catálogo foi removida');
 select ok(has_function_privilege('anon', 'public.obter_catalogo_publico(text)', 'execute'), 'anon consulta apenas catálogo identificado por estabelecimento');
@@ -66,6 +74,12 @@ select ok(not has_table_privilege('authenticated', 'public.push_subscriptions', 
 select ok(not has_table_privilege('authenticated', 'public.configuracoes_negocio', 'update'), 'configuração global legada permanece somente leitura');
 select ok(not has_function_privilege('anon', 'public.admin_atualizar_tipo_usuario(uuid,text)', 'execute'), 'anon não altera perfis');
 select ok(not has_function_privilege('anon', 'public.registrar_movimentacao_financeira(uuid,bigint,text,text,text,numeric,numeric,text,text)', 'execute'), 'anon não registra movimentações');
+select ok(not has_function_privilege('anon', 'public.listar_equipe_barbearia(uuid)', 'execute'), 'anon não consulta equipe interna');
+select ok(not has_function_privilege('anon', 'public.atualizar_dados_profissional(bigint,text,text,numeric,text)', 'execute'), 'anon não altera comissão de profissional');
+select ok(not has_function_privilege('authenticated', 'public.criar_minha_barbearia(text,text,boolean)', 'execute'), 'proprietário não cria unidade sem a plataforma');
+select ok(not has_function_privilege('authenticated', 'public.admin_atribuir_proprietario_barbearia(uuid,uuid)', 'execute'), 'atribuição legada de proprietário permanece revogada');
+select ok(position('p_tipo not in (''cliente'', ''barbeiro'', ''admin'')' in pg_get_functiondef('public.admin_atualizar_tipo_usuario(uuid,text)'::regprocedure)) > 0, 'proprietário não é atribuído pelo diretório de usuários');
+select ok(position('v_barbeiro.funcao = ''proprietario''' in pg_get_functiondef('public.alterar_status_profissional(bigint,boolean)'::regprocedure)) > 0, 'proprietário ativo exige transferência antes da desativação');
 
 select * from finish();
 rollback;

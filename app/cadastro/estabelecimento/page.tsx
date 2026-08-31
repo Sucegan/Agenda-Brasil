@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { AuthPortal } from '@/components/auth-portal';
+import { BusinessContact } from '@/components/business-contact';
 
-export const metadata: Metadata = { title: 'Cadastro de estabelecimento | Agenda Brasil', description: 'Comece seu teste e configure sua agenda, equipe, serviços e pagamentos.' };
+export const metadata: Metadata = { title: 'Contratar Agenda Brasil | Sucegan Tech', description: 'Fale com a Sucegan Tech para cadastrar e configurar seu estabelecimento.' };
 
 export default function BusinessSignupPage() {
-  return <AuthPortal mode="proprietario" />;
+  return <BusinessContact />;
 }

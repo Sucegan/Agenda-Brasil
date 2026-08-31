@@ -85,7 +85,6 @@ export function AdminCommandCenter({
   const [loading, setLoading] = useState(true);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [changingUnitId, setChangingUnitId] = useState<string | null>(null);
-  const [changingOwnerUnitId, setChangingOwnerUnitId] = useState<string | null>(null);
   const [changingUserId, setChangingUserId] = useState<string | null>(null);
   const [changingSubscriptionId, setChangingSubscriptionId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -168,7 +167,14 @@ export function AdminCommandCenter({
 
   const changeUserRole = async (user: AdminUserDirectoryEntry, role: AccountType) => {
     if (user.tipo === role) return;
-    if (!window.confirm(`Alterar o perfil de “${user.nome}” de ${roleLabels[user.tipo]} para ${roleLabels[role]}?`)) return;
+    if (user.tipo === 'proprietario' || role === 'proprietario') {
+      toast.error('Defina ou transfira o proprietário em Gerenciar unidade → Equipe.');
+      return;
+    }
+    const adminWarning = role === 'admin'
+      ? ' O vínculo operacional desse usuário será desativado para que ele não apareça como profissional.'
+      : '';
+    if (!window.confirm(`Alterar o perfil de “${user.nome}” de ${roleLabels[user.tipo]} para ${roleLabels[role]}?${adminWarning}`)) return;
     setChangingUserId(user.id);
     const { error: roleError } = await supabase.rpc('admin_atualizar_tipo_usuario', {
       p_usuario_id: user.id,
@@ -178,21 +184,6 @@ export function AdminCommandCenter({
     if (roleError) return toast.error(roleError.message ?? 'Não foi possível alterar o perfil.');
     await loadUsers(userSearch, userType);
     toast.success('Perfil atualizado e registrado na auditoria.');
-  };
-
-  const assignOwner = async (barbershopId: string, ownerId: string) => {
-    if (!ownerId) return;
-    const owner = users.find((user) => user.id === ownerId);
-    if (!owner || !window.confirm(`Definir “${owner.nome}” como proprietário responsável por esta unidade?`)) return;
-    setChangingOwnerUnitId(barbershopId);
-    const { error: ownerError } = await supabase.rpc('admin_atribuir_proprietario_barbearia', {
-      p_barbearia_id: barbershopId,
-      p_proprietario_id: ownerId,
-    });
-    setChangingOwnerUnitId(null);
-    if (ownerError) return toast.error(ownerError.message ?? 'Não foi possível atribuir o proprietário.');
-    await Promise.all([loadSummary(), loadUsers(), onRefresh()]);
-    toast.success('Proprietário vinculado à unidade.');
   };
 
   const changeSubscriptionStatus = async (subscription: AdminPlatformSubscription, status: 'trialing' | 'exempt' | 'canceled') => {
@@ -278,7 +269,7 @@ export function AdminCommandCenter({
                     <div className="flex flex-wrap justify-end gap-1"><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${unit.ativa ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{unit.ativa ? 'Ativa' : 'Inativa'}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${unit.agendamento_publico ? 'bg-blue-500/15 text-blue-300' : 'bg-zinc-800 text-zinc-500'}`}>{unit.agendamento_publico ? 'Pública' : 'Privada'}</span></div>
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-white">{unit.profissionais}</b><small className="text-[10px] text-zinc-600">Equipe</small></div><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-white">{unit.agendamentos}</b><small className="text-[10px] text-zinc-600">Agenda</small></div><div className="rounded-lg bg-zinc-900 p-2"><b className="block text-sm text-amber-200">{Number(unit.avaliacao_media).toFixed(1)}</b><small className="text-[10px] text-zinc-600">Nota</small></div></div>
-                  <label className="mt-3 block text-[10px] font-black uppercase tracking-wider text-zinc-600">Responsável da unidade<select value="" disabled={changingOwnerUnitId === unit.id} onChange={(event) => { void assignOwner(unit.id, event.target.value); }} className="mt-1.5 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2.5 text-xs font-bold normal-case tracking-normal text-zinc-300 outline-none focus:border-violet-500 disabled:opacity-50"><option value="">Atribuir proprietário...</option>{users.filter((user) => user.tipo === 'proprietario' || user.tipo === 'admin').map((owner) => <option key={owner.id} value={owner.id}>{owner.nome} · {roleLabels[owner.tipo]}</option>)}</select></label>
+                  <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5 text-xs leading-5 text-zinc-500">O proprietário é definido entre os profissionais ativos em <b className="text-zinc-300">Gerenciar unidade → Equipe</b>. O administrador global não integra a equipe.</p>
                   <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => onSelectBarbershop(unit.id)} className="flex-1 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white hover:bg-violet-500">Gerenciar unidade</button>{unit.ativa && unit.agendamento_publico && <a href={`/agendar?estabelecimento=${encodeURIComponent(unit.slug)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-300" aria-label={`Abrir agenda pública de ${unit.nome}`}><ExternalLink size={15} /></a>}<button type="button" onClick={() => { void changeUnitStatus(unit.id, !unit.ativa, unit.nome); }} disabled={changingUnitId === unit.id} className={`rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50 ${unit.ativa ? 'border-red-500/25 text-red-300' : 'border-emerald-500/25 text-emerald-300'}`}>{changingUnitId === unit.id ? 'Salvando...' : unit.ativa ? 'Desativar' : 'Reativar'}</button></div>
                 </article>
               ))}
@@ -294,7 +285,45 @@ export function AdminCommandCenter({
               <select value={userType} onChange={(event) => setUserType(event.target.value as AccountType | '')} aria-label="Filtrar por perfil" className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm outline-none focus:border-violet-500"><option value="">Todos os perfis</option><option value="admin">Administradores</option><option value="proprietario">Proprietários</option><option value="barbeiro">Profissionais</option><option value="cliente">Clientes</option></select>
               <button className="rounded-xl bg-violet-600 px-4 py-3 text-sm font-bold hover:bg-violet-500">Buscar</button>
             </form>
-            {users.length ? <div className="overflow-x-auto rounded-xl border border-zinc-800"><table className="min-w-full text-left text-sm"><thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600"><tr><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Contato</th><th className="px-4 py-3">Perfil e acesso</th><th className="px-4 py-3">Cadastro</th></tr></thead><tbody className="divide-y divide-zinc-800">{users.map((user) => <tr key={user.id} className="bg-zinc-950/30"><td className="px-4 py-3"><b className="block text-zinc-100">{user.nome}</b><small className="text-zinc-600">{user.id.slice(0, 8)}</small></td><td className="px-4 py-3"><span className="block text-zinc-300">{user.email}</span><small className="text-zinc-600">{user.telefone || 'Sem telefone'}</small></td><td className="px-4 py-3"><select aria-label={`Perfil de ${user.nome}`} value={user.tipo} disabled={changingUserId === user.id} onChange={(event) => { void changeUserRole(user, event.target.value as AccountType); }} className={`rounded-lg border px-2.5 py-2 text-xs font-bold outline-none disabled:opacity-50 ${user.tipo === 'admin' ? 'border-violet-500/25 bg-violet-500/10 text-violet-200' : user.tipo === 'proprietario' ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : user.tipo === 'barbeiro' ? 'border-blue-500/25 bg-blue-500/10 text-blue-200' : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'}`}><option value="admin">Administrador global</option><option value="proprietario">Proprietário</option><option value="barbeiro">Profissional</option><option value="cliente">Cliente</option></select></td><td className="px-4 py-3 text-xs text-zinc-500">{new Date(user.created_at).toLocaleDateString('pt-BR')}</td></tr>)}</tbody></table></div> : <EmptyState>Nenhum usuário encontrado com esses filtros.</EmptyState>}
+            <p className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs leading-5 text-amber-100/80">
+              Proprietários são definidos exclusivamente em <b>Gerenciar unidade → Equipe</b>. Profissionais entram por convite do proprietário e administradores globais nunca aparecem na agenda.
+            </p>
+            {users.length ? (
+              <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-zinc-950/80 text-[10px] uppercase tracking-wider text-zinc-600">
+                    <tr><th className="px-4 py-3">Usuário</th><th className="px-4 py-3">Contato</th><th className="px-4 py-3">Perfil e acesso</th><th className="px-4 py-3">Cadastro</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {users.map((user) => {
+                      const ownerRoleLocked = user.tipo === 'proprietario';
+                      return (
+                        <tr key={user.id} className="bg-zinc-950/30">
+                          <td className="px-4 py-3"><b className="block text-zinc-100">{user.nome}</b><small className="text-zinc-600">{user.id.slice(0, 8)}</small></td>
+                          <td className="px-4 py-3"><span className="block text-zinc-300">{user.email}</span><small className="text-zinc-600">{user.telefone || 'Sem telefone'}</small></td>
+                          <td className="px-4 py-3">
+                            <select
+                              aria-label={`Perfil de ${user.nome}`}
+                              value={user.tipo}
+                              disabled={changingUserId === user.id || ownerRoleLocked}
+                              onChange={(event) => { void changeUserRole(user, event.target.value as AccountType); }}
+                              className={`rounded-lg border px-2.5 py-2 text-xs font-bold outline-none disabled:cursor-not-allowed disabled:opacity-60 ${user.tipo === 'admin' ? 'border-violet-500/25 bg-violet-500/10 text-violet-200' : user.tipo === 'proprietario' ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : user.tipo === 'barbeiro' ? 'border-blue-500/25 bg-blue-500/10 text-blue-200' : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'}`}
+                            >
+                              <option value="admin">Administrador global</option>
+                              <option value="proprietario" disabled>Proprietário (pela equipe)</option>
+                              <option value="barbeiro">Profissional</option>
+                              <option value="cliente">Cliente</option>
+                            </select>
+                            {ownerRoleLocked && <small className="mt-1 block text-amber-300/70">Transfira pela equipe da unidade.</small>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-zinc-500">{new Date(user.created_at).toLocaleDateString('pt-BR')}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : <EmptyState>Nenhum usuário encontrado com esses filtros.</EmptyState>}
           </div>
         )}
 

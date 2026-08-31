@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import {
-  ArrowLeft, BadgeCheck, Building2, CalendarDays, CheckCircle2, Eye, EyeOff,
+  ArrowLeft, Building2, CalendarDays, Eye, EyeOff,
   Lock, Mail, MailCheck, Phone, RefreshCw, Scissors, ShieldCheck, Sparkles, User,
 } from 'lucide-react';
 import { Captcha } from '@/components/captcha';
@@ -12,7 +12,7 @@ import { SiteRights } from '@/components/site-rights';
 import { signupErrorMessage, signupLooksLikeExistingAccount, validateSignupFields } from '@/lib/signup-validation';
 import type { PlatformPublicSettings } from '@/lib/database.types';
 
-export type AuthMode = 'login' | 'cliente' | 'proprietario' | 'barbeiro';
+export type AuthMode = 'login' | 'cliente' | 'barbeiro';
 
 type AuthPortalProps = {
   mode: AuthMode;
@@ -28,11 +28,6 @@ const modeContent: Record<Exclude<AuthMode, 'login'>, { title: string; subtitle:
     subtitle: 'Uma conta gratuita para marcar e acompanhar seus horários',
     submit: 'Criar conta de cliente',
   },
-  proprietario: {
-    title: 'Comece seu teste grátis',
-    subtitle: 'Crie a conta responsável pelo seu estabelecimento',
-    submit: 'Criar conta do estabelecimento',
-  },
   barbeiro: {
     title: 'Convite para profissional',
     subtitle: 'Complete seu cadastro para entrar na equipe',
@@ -42,7 +37,6 @@ const modeContent: Record<Exclude<AuthMode, 'login'>, { title: string; subtitle:
 
 export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }: AuthPortalProps) {
   const isLogin = mode === 'login';
-  const isOwner = mode === 'proprietario';
   const isProfessionalInvite = mode === 'barbeiro';
   const [hydrated, setHydrated] = useState(false);
   const [email, setEmail] = useState('');
@@ -217,7 +211,7 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
   const card = (
     <section className="rounded-3xl border border-zinc-800/80 bg-zinc-900/95 p-6 shadow-2xl sm:p-8">
       <div className="mb-7 text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl">{isOwner ? <Building2 className="text-amber-400" size={31} /> : <Scissors className="text-emerald-400" size={31} />}</div>
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl"><Scissors className="text-emerald-400" size={31} /></div>
         <h1 className="text-2xl font-black text-white">{isLogin ? platform?.nome_site ?? 'Agenda Brasil' : signupContent?.title}</h1>
         <p className="mt-2 text-sm font-medium leading-6 text-zinc-400">{isLogin ? platform?.subtitulo ?? 'Acesse sua conta para continuar' : signupContent?.subtitle}</p>
         {isProfessionalInvite && <p className="mt-3 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300"><Sparkles size={13} /> Acesso restrito por convite</p>}
@@ -247,9 +241,9 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
         </form>
       )}
 
-      {!confirmationEmail && <div className="mt-6 space-y-3 text-center">{isLogin ? <><div className="grid gap-2 sm:grid-cols-2"><Link href="/cadastro/cliente" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-xs font-black text-emerald-300 hover:bg-emerald-500/20"><CalendarDays className="mx-auto mb-1" size={17} />Sou cliente</Link><Link href="/cadastro/estabelecimento" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs font-black text-amber-200 hover:bg-amber-500/20"><Building2 className="mx-auto mb-1" size={17} />Tenho um negócio</Link></div><Link href="/estabelecimentos" className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:border-emerald-500/50"><CalendarDays size={17} /> Escolher estabelecimento e agendar</Link></> : <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300"><ArrowLeft size={16} /> Já tenho uma conta</Link>}<p className="text-[11px] text-zinc-600"><Link href="/privacidade" className="hover:text-zinc-400">Privacidade</Link> · <Link href="/termos" className="hover:text-zinc-400">Termos</Link></p></div>}
+      {!confirmationEmail && <div className="mt-6 space-y-3 text-center">{isLogin ? <><div className="grid gap-2 sm:grid-cols-2"><Link href="/cadastro/cliente" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-xs font-black text-emerald-300 hover:bg-emerald-500/20"><CalendarDays className="mx-auto mb-1" size={17} />Sou cliente</Link><Link href="/cadastro/estabelecimento" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs font-black text-amber-200 hover:bg-amber-500/20"><Building2 className="mx-auto mb-1" size={17} />Quero contratar</Link></div><Link href="/estabelecimentos" className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold text-zinc-200 hover:border-emerald-500/50"><CalendarDays size={17} /> Escolher estabelecimento e agendar</Link></> : <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-400 hover:text-emerald-300"><ArrowLeft size={16} /> Já tenho uma conta</Link>}<p className="text-[11px] text-zinc-600"><Link href="/privacidade" className="hover:text-zinc-400">Privacidade</Link> · <Link href="/termos" className="hover:text-zinc-400">Termos</Link></p></div>}
     </section>
   );
 
-  return <main className="app-screen login-background relative flex flex-col items-center justify-center px-4 py-6 selection:bg-emerald-500/30"><Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} />{isOwner ? <div className="z-10 grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-zinc-800/80 bg-zinc-950/55 shadow-2xl lg:grid-cols-[0.9fr_1.1fr]"><aside className="hidden border-r border-zinc-800 bg-gradient-to-br from-amber-500/15 via-zinc-950 to-emerald-500/10 p-10 lg:flex lg:flex-col lg:justify-between"><div><p className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs font-black uppercase tracking-wider text-amber-200"><BadgeCheck size={15} /> 14 dias grátis</p><h2 className="mt-6 text-4xl font-black leading-tight text-white">Sua gestão profissional começa aqui.</h2><p className="mt-4 leading-7 text-zinc-400">Cadastre o responsável agora. Depois você configura a unidade, equipe, serviços, agenda e publicação.</p></div><ol className="mt-10 space-y-4 text-sm text-zinc-300">{['Criar conta responsável', 'Cadastrar estabelecimento', 'Configurar agenda e serviços', 'Publicar e receber agendamentos'].map((step, index) => <li key={step} className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 font-black text-emerald-300">{index + 1}</span>{step}</li>)}</ol><p className="mt-10 flex items-center gap-2 text-xs text-zinc-500"><CheckCircle2 size={16} className="text-emerald-400" /> Sem cartão e cancele quando quiser.</p></aside><div className="p-0 lg:p-6">{card}</div></div> : <div className="z-10 w-full max-w-md">{card}</div>}<SiteRights className="mt-6" /></main>;
+  return <main className="app-screen login-background relative flex flex-col items-center justify-center px-4 py-6 selection:bg-emerald-500/30"><Toaster position="top-center" containerStyle={{ top: 'calc(16px + env(safe-area-inset-top))' }} toastOptions={{ style: { background: '#27272a', color: '#fff', border: '1px solid #3f3f46' } }} /><div className="z-10 w-full max-w-md">{card}</div><SiteRights className="mt-6" /></main>;
 }

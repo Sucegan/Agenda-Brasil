@@ -6,7 +6,7 @@ test('login and public booking entry points fit the viewport', async ({ page }) 
   await expect(page.getByRole('link', { name: /Escolher estabelecimento|Agendar sem senha/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Reenviar confirmação/i })).toBeVisible();
   await expect(page.getByRole('link', { name: /Sou cliente/i })).toHaveAttribute('href', '/cadastro/cliente');
-  await expect(page.getByRole('link', { name: /Tenho um negócio/i })).toHaveAttribute('href', '/cadastro/estabelecimento');
+  await expect(page.getByRole('link', { name: /Quero contratar/i })).toHaveAttribute('href', '/cadastro/estabelecimento');
   const emailLabel = page.locator('label[for="login-email"]');
   const emailInput = page.locator('#login-email');
   const submitButton = page.getByRole('button', { name: 'Entrar', exact: true });
@@ -73,45 +73,18 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
   await expect(page.getByRole('button', { name: /Reenviar em \d+s/i })).toBeDisabled();
 });
 
-test('owner pricing and signup path are responsive and keep the owner role', async ({ page }) => {
-  let signupType = '';
-  await page.route('**/auth/v1/signup**', async (route) => {
-    const body = route.request().postDataJSON() as { data?: { tipo?: string } };
-    signupType = body.data?.tipo ?? '';
-    const now = new Date().toISOString();
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        user: {
-          id: '00000000-0000-4000-8000-000000000456', aud: 'authenticated', role: 'authenticated',
-          email: 'dono.teste@example.com', phone: '', confirmation_sent_at: now,
-          app_metadata: { provider: 'email', providers: ['email'] }, user_metadata: {}, identities: [{ identity_id: '00000000-0000-4000-8000-000000000457', provider: 'email' }],
-          created_at: now, updated_at: now,
-        },
-        session: null,
-      }),
-    });
-  });
-
+test('business pricing leads to assisted contact instead of public owner signup', async ({ page }) => {
   await page.goto('/planos', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: /Sua agenda cheia/i })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Profissional' })).toBeVisible();
   const viewport = page.viewportSize();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? 0);
 
-  await page.getByRole('link', { name: /Começar teste grátis/i }).click();
+  await page.getByRole('link', { name: /Solicitar demonstração/i }).click();
   await expect(page).toHaveURL(/\/cadastro\/estabelecimento$/);
-  await expect(page.getByRole('heading', { name: /Comece seu teste grátis/i })).toBeVisible();
-  await page.locator('input[name="nome"]').fill('Dono Teste');
-  await page.locator('input[name="telefone"]').fill('11999999999');
-  await page.locator('input[name="email"]').fill('dono.teste@example.com');
-  await page.locator('input[name="senha"]').fill('senha-segura');
-  await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: /Criar conta do estabelecimento/i }).click();
-  await expect(page.getByRole('heading', { name: 'Cadastro realizado' })).toBeVisible();
-  expect(signupType).toBe('proprietario');
+  await expect(page.getByRole('heading', { name: /Leve a Agenda Brasil/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Quero contratar/i })).toHaveAttribute('href', /^mailto:/);
+  await expect(page.locator('form')).toHaveCount(0);
 });
 
 test('signup blocks invalid profile data before calling Supabase', async ({ page }) => {

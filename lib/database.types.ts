@@ -10,6 +10,7 @@ export type FinancialEntryType = "receita" | "despesa" | "estorno";
 export type FinancialEntryStatus = "pendente" | "pago" | "cancelado";
 export type BrandIcon = "tesoura" | "coroa" | "barba" | "estrela" | "calendario" | "loja";
 export type PlatformSubscriptionStatus = "incomplete" | "incomplete_expired" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "paused" | "exempt";
+export type ProfessionalRole = "proprietario" | "funcionario";
 
 export type AdminMetrics = {
   unidades_total: number;
@@ -170,9 +171,9 @@ export interface Database {
         Relationships: [Relationship];
       };
       barbeiros: {
-        Row: { id: number; barbearia_id: string; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[]; ativo: boolean };
-        Insert: { id?: never; barbearia_id: string; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean };
-        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean };
+        Row: { id: number; barbearia_id: string; nome: string; telefone: string | null; usuario_id: string; horario_inicio: string; horario_fim: string; horario_almoco_inicio: string | null; horario_almoco_fim: string | null; dias_trabalho: BusinessDay[]; ativo: boolean; funcao: ProfessionalRole; comissao_percentual: number; observacoes_gestao: string | null; updated_at: string };
+        Insert: { id?: never; barbearia_id: string; nome: string; telefone?: string | null; usuario_id: string; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean; funcao?: ProfessionalRole; comissao_percentual?: number; observacoes_gestao?: string | null; updated_at?: string };
+        Update: { nome?: string; telefone?: string | null; horario_inicio?: string; horario_fim?: string; horario_almoco_inicio?: string | null; horario_almoco_fim?: string | null; dias_trabalho?: BusinessDay[]; ativo?: boolean; funcao?: ProfessionalRole; comissao_percentual?: number; observacoes_gestao?: string | null; updated_at?: string };
         Relationships: [Relationship];
       };
       clientes: {
@@ -375,6 +376,14 @@ export interface Database {
       };
       obter_resumo_financeiro: { Args: { p_barbearia_id: string; p_inicio: string; p_fim: string }; Returns: FinancialSummary };
       alterar_status_profissional: { Args: { p_barbeiro_id: number; p_ativo: boolean }; Returns: Database["public"]["Tables"]["barbeiros"]["Row"] };
+      listar_equipe_barbearia: { Args: { p_barbearia_id: string }; Returns: Database["public"]["Tables"]["barbeiros"]["Row"][] };
+      atualizar_dados_profissional: {
+        Args: { p_barbeiro_id: number; p_nome: string; p_telefone: string; p_comissao_percentual: number; p_observacoes: string };
+        Returns: Database["public"]["Tables"]["barbeiros"]["Row"];
+      };
+      definir_proprietario_barbearia: { Args: { p_barbearia_id: string; p_barbeiro_id: number }; Returns: Database["public"]["Tables"]["barbearias"]["Row"] };
+      definir_feriado_fechado: { Args: { p_barbearia_id: string; p_data: string; p_descricao: string }; Returns: Database["public"]["Tables"]["feriados_negocio"]["Row"] };
+      definir_feriado_aberto: { Args: { p_barbearia_id: string; p_data: string }; Returns: boolean };
       atualizar_preferencias_comunicacao: {
         Args: { p_email: boolean; p_whatsapp: boolean; p_push: boolean; p_marketing: boolean };
         Returns: Database["public"]["Tables"]["usuarios"]["Row"];
