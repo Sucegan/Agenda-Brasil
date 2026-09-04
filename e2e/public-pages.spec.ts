@@ -73,6 +73,43 @@ test('signup keeps a persistent email confirmation notice', async ({ page }) => 
   await expect(page.getByRole('button', { name: /Reenviar em \d+s/i })).toBeDisabled();
 });
 
+test('signup automatically resends confirmation for an existing unconfirmed account', async ({ page }) => {
+  let resendRequests = 0;
+  await page.route('**/auth/v1/signup**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: {
+          id: '00000000-0000-4000-8000-000000000125',
+          identities: [],
+          app_metadata: { provider: 'email', providers: ['email'] },
+          user_metadata: {},
+        },
+        session: null,
+      }),
+    });
+  });
+  await page.route('**/auth/v1/resend**', async (route) => {
+    resendRequests += 1;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.goto('/cadastro/cliente', { waitUntil: 'domcontentloaded' });
+  await page.locator('input[name="nome"]').fill('Cliente Existente');
+  await page.locator('input[name="telefone"]').fill('11999999999');
+  await page.locator('input[name="email"]').fill('cliente.existente@example.com');
+  await page.locator('input[name="senha"]').fill('senha-segura');
+  await page.locator('input[name="confirmarSenha"]').fill('senha-segura');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Criar conta de cliente', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Cadastro realizado' })).toBeVisible();
+  await expect(page.getByText(/ainda aguardava confirmação/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Reenviar em \d+s/i })).toBeDisabled();
+  expect(resendRequests).toBe(1);
+});
+
 test('business pricing leads to assisted contact instead of public owner signup', async ({ page }) => {
   await page.goto('/planos', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: /Sua agenda cheia/i })).toBeVisible();
@@ -118,6 +155,8 @@ test('professional registration is isolated and requires a private invitation', 
 });
 
 test('legacy signup links redirect to the separated registration areas', async ({ page }) => {
+  await page.goto('/cadastro', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/cadastro\/cliente$/);
   await page.goto('/?tipo=proprietario', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/\/cadastro\/estabelecimento$/);
   await page.goto('/?tipo=barbeiro&convite=convite-antigo', { waitUntil: 'domcontentloaded' });

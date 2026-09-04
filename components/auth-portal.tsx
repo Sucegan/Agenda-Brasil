@@ -132,11 +132,28 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
       if (authError) throw new Error(signupErrorMessage(authError));
 
       if (signupLooksLikeExistingAccount(authData.user)) {
-        const message = 'Este e-mail já possui uma conta. Entre com sua senha ou recupere o acesso.';
-        setLoginNotice(message);
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: normalized.email,
+          options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+        });
         setPassword('');
         setPasswordConfirmation('');
         setCaptchaToken('');
+
+        if (!resendError) {
+          const message = 'Sua conta ainda aguardava confirmação. Enviamos uma nova solicitação agora.';
+          setConfirmationEmail(normalized.email);
+          setConfirmationNotice(message);
+          setResendCooldown(60);
+          toast.success('Confira seu e-mail para concluir o cadastro.', { id: toastId });
+          return;
+        }
+
+        const message = /rate limit/i.test(resendError.message)
+          ? 'Este e-mail já foi usado. Aguarde alguns minutos e tente reenviar a confirmação pelo login.'
+          : 'Este e-mail já possui uma conta. Entre com sua senha ou recupere o acesso.';
+        setLoginNotice(message);
         toast.error(message, { id: toastId });
         return;
       }
