@@ -124,7 +124,11 @@ export default function PublicBookingPage() {
   useEffect(() => {
     let active = true;
     const initialize = async () => {
-      const requestedSlug = new URLSearchParams(window.location.search).get('estabelecimento')?.trim().toLowerCase() || 'agenda-brasil';
+      const requestedSlug = new URLSearchParams(window.location.search).get('estabelecimento')?.trim().toLowerCase();
+      if (!requestedSlug) {
+        window.location.replace('/estabelecimentos');
+        return;
+      }
       const [{ data, error }, { data: publicPlans }, { data: userData, error: userError }] = await Promise.all([
         supabase.rpc('obter_catalogo_publico', { p_slug: requestedSlug }),
         supabase.rpc('listar_planos_publicos', { p_slug: requestedSlug }),
@@ -325,9 +329,10 @@ export default function PublicBookingPage() {
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
           <h2 className="mb-4 flex items-center gap-2 font-black"><Users className="text-emerald-400" size={20} /> 1. Escolha o profissional</h2>
           <div className="grid gap-3 sm:grid-cols-2">{catalog.barbeiros.map((item) => <button key={item.id} onClick={() => { setBarber(item); setService(null); setDate(''); setSlots([]); }} className={`rounded-xl border p-4 text-left ${barber?.id === item.id ? 'border-emerald-400 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-950/50'}`}><b className="block">{item.nome}</b><small className="text-zinc-500">{formatWorkDays(item.dias_trabalho)}</small></button>)}</div>
+          {catalog.barbeiros.length === 0 && <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100"><p className="font-bold">A agenda ainda não possui profissionais disponíveis.</p><p className="mt-1 text-amber-200/80">Escolha outro estabelecimento ou fale diretamente com este local.</p><Link href="/estabelecimentos" className="mt-3 inline-flex rounded-lg border border-amber-400/30 px-3 py-2 text-xs font-black text-amber-200">Escolher outro estabelecimento</Link></div>}
         </section>
 
-        {barber && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><Scissors className="text-amber-400" size={20} /> 2. Escolha o serviço</h2><div className="grid gap-3 sm:grid-cols-3">{filteredServices.map((item) => <button key={item.id} onClick={() => { setService(item); setDate(''); setSlots([]); }} className={`rounded-xl border p-4 text-left ${service?.id === item.id ? 'border-amber-400 bg-amber-500/10' : 'border-zinc-800 bg-zinc-950/50'}`}><b className="block">{item.nome}</b><small className="text-zinc-400">{formatCurrency(Number(item.preco))} · {item.duracao} min</small></button>)}</div></section>}
+        {barber && <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl"><h2 className="mb-4 flex items-center gap-2 font-black"><Scissors className="text-amber-400" size={20} /> 2. Escolha o serviço</h2>{filteredServices.length > 0 ? <div className="grid gap-3 sm:grid-cols-3">{filteredServices.map((item) => <button key={item.id} onClick={() => { setService(item); setDate(''); setSlots([]); }} className={`rounded-xl border p-4 text-left ${service?.id === item.id ? 'border-amber-400 bg-amber-500/10' : 'border-zinc-800 bg-zinc-950/50'}`}><b className="block">{item.nome}</b><small className="text-zinc-400">{formatCurrency(Number(item.preco))} · {item.duracao} min</small></button>)}</div> : <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100"><p className="font-bold">{barber.nome} ainda não cadastrou serviços.</p><p className="mt-1 text-amber-200/80">Escolha outro profissional ou entre em contato com o estabelecimento antes de reservar.</p></div>}</section>}
 
         {service && <section className="panel-card p-5">
           <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><h2 className="flex items-center gap-2 font-black"><CalendarDays className="text-blue-400" size={20} /> 3. Escolha data e horário</h2><span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-bold text-blue-200">{service.duracao} min reservados</span></div>

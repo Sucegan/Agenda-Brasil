@@ -183,10 +183,53 @@ test('legal pages are available without authentication', async ({ page }) => {
 
 test('public booking route always returns a usable page', async ({ page }) => {
   await page.goto('/agendar', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/estabelecimentos$/);
+  await expect(page.getByRole('heading', { name: 'Onde você quer agendar?' })).toBeVisible();
   await expect(page.locator('main')).toBeVisible();
   await expect(page.locator('body')).not.toContainText('Application error');
   const viewport = page.viewportSize();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport?.width ?? 0);
+});
+
+test('public booking explains when a professional has no services', async ({ page }) => {
+  await page.route('**/rest/v1/rpc/obter_catalogo_publico', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        negocio: {
+          id: '00000000-0000-4000-8000-000000000200',
+          nome: 'Barbearia Teste',
+          endereco: 'Rua Teste, 1',
+          telefone: '11999999999',
+          logo_url: null,
+          slug: 'sem-servicos',
+          agendamento_publico: true,
+          cancelamento_horas: 2,
+          sinal_percentual: 0,
+          pix_chave: null,
+          pix_beneficiario: null,
+          cor_primaria: '#10b981',
+          cor_secundaria: '#f59e0b',
+          icone: 'tesoura',
+          antecedencia_minutos: 30,
+          intervalo_grade_minutos: 15,
+          horizonte_agendamento_dias: 45,
+        },
+        barbeiros: [{ id: 999, nome: 'Profissional Teste', horario_inicio: '08:00:00', horario_fim: '18:00:00', dias_trabalho: [1, 2, 3, 4, 5, 6] }],
+        servicos: [],
+        feriados: [],
+      }),
+    });
+  });
+  await page.route('**/rest/v1/rpc/listar_planos_publicos', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/agendar?estabelecimento=sem-servicos', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: /Profissional Teste/i }).click();
+  await expect(page.getByRole('status')).toContainText('ainda não cadastrou serviços');
+  await expect(page.getByRole('button', { name: /Reservar horário/i })).toHaveCount(0);
 });
 
 test('dashboard redirects visitors without a session', async ({ page }) => {
