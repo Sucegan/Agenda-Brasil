@@ -41,7 +41,7 @@ alter table public.barbearias add constraint barbearias_horizonte_check
 create table if not exists public.configuracoes_plataforma (
   id boolean primary key default true check (id),
   nome_site varchar(80) not null default 'Agenda Brasil',
-  subtitulo varchar(160) not null default 'Agendamentos simples, rápidos e seguros',
+  subtitulo varchar(160) not null default 'Agendamentos simples, rápidos',
   nome_direitos varchar(120) not null default 'Sucegan Tech',
   email_suporte varchar(254),
   aviso_global varchar(240),

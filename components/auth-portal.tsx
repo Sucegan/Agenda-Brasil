@@ -229,7 +229,7 @@ export function AuthPortal({ mode, inviteToken = null, sessionExpired = false }:
     <section className="rounded-3xl border border-zinc-800/80 bg-zinc-900/95 p-6 shadow-2xl sm:p-8">
       <div className="mb-7 text-center">
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl"><Scissors className="text-emerald-400" size={31} /></div>
-        <h1 className="text-2xl font-black text-white">{isLogin ? platform?.nome_site ?? 'a' : signupContent?.title}</h1>
+        <h1 className="text-2xl font-black text-white">{isLogin ? platform?.nome_site ?? 'Agenda Brasil' : signupContent?.title}</h1>
         <p className="mt-2 text-sm font-medium leading-6 text-zinc-400">{isLogin ? platform?.subtitulo ?? 'Acesse sua conta para continuar' : signupContent?.subtitle}</p>
         {isProfessionalInvite && <p className="mt-3 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-300"><Sparkles size={13} /> Acesso restrito por convite</p>}
       </div>
